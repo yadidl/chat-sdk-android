@@ -163,6 +163,8 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
         rect = new Rect(view.getLeft(), view.getTop(), view.getRight(), view.getBottom());
         recordingStart = new Date();
 
+        etMessage.setHint(getContext().getString(R.string.slide_to_cancel));
+
         toastUpdateDisposable = Observable.interval(0, 1000, TimeUnit.MILLISECONDS).observeOn(AndroidSchedulers.mainThread()).subscribe(aLong -> {
             long remainingTime = ChatSDK.config().audioMessageMaxLengthSeconds - (new Date().getSeconds() - recordingStart.getSeconds());
             if (remainingTime <= 10) {
@@ -233,6 +235,7 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
         if (toastUpdateDisposable != null) {
             toastUpdateDisposable.dispose();
         }
+        etMessage.setHint(getContext().getString(R.string.message_hint));
     }
 
     public void setAudioModeEnabled (boolean audioEnabled) {

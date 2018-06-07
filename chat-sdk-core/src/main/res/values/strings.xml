@@ -50,6 +50,7 @@
     <string name="send_or_discard_recording">Send or discard recording</string>
     <string name="recording_cancelled">Recording cancelled</string>
     <string name="recording_too_short">Recording too short</string>
+    <string name="slide_to_cancel">Slide to cancel...</string>
 
     <!--ThreadDetails context-->
     <string name="thread_details_activity_title">Thread Details</string>
@@ -78,6 +79,8 @@
     <string name="chat_activity_show_users_item_text">Show thread users</string>
     <string name="chat_activity_show_thread_details">Thread Details</string>
     <string name="thread_users">Thread users:</string>
+    <string name="message_hint">Message</string>
+
 
     <!--ChatSDKAbstractContactsFragment-->
     <string name="abstract_contact_fragment_user_added_to_thread_toast_success">User added to thread, Name:&#160;</string>
