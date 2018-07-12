@@ -2,8 +2,9 @@ apply plugin: 'com.android.library'
 
 buildscript {
     repositories {
+        google()
+        maven { url "https://jitpack.io" }
         jcenter()
-        mavenCentral()
     }
 
     dependencies {
@@ -16,7 +17,6 @@ apply plugin: 'com.jfrog.bintray'
 android {
 
     compileSdkVersion Integer.parseInt(project.ANDROID_COMPILE_SDK_VERSION)
-    buildToolsVersion project.ANDROID_BUILD_TOOLS_VERSION
 
     defaultConfig {
         minSdkVersion Integer.parseInt(project.MIN_SDK)
@@ -38,7 +38,7 @@ android {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':chat-sdk-core')
-    api 'com.google.firebase:firebase-storage:' + project.GOOGLE_SERVICES_VERSION
+    api 'com.google.firebase:firebase-storage:16.0.1'
 }
 
 // Bintray upload properties

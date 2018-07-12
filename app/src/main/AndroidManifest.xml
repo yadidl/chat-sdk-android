@@ -16,6 +16,13 @@
             </intent-filter>
         </activity>
 
+        <!--<activity android:name="co.chatsdk.firebase.ui.SplashScreenActivity">-->
+            <!--<intent-filter>-->
+                <!--<action android:name="android.intent.action.MAIN" />-->
+                <!--<category android:name="android.intent.category.LAUNCHER" />-->
+            <!--</intent-filter>-->
+        <!--</activity>-->
+
         <meta-data android:name="twitter_key" android:value="@string/twitter_key" />
         <meta-data android:name="twitter_secret" android:value="@string/twitter_secret" />
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="@string/google_maps_api_key"/>

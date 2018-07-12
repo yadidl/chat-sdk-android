@@ -9,7 +9,7 @@ Chat SDK is a fully featured open source instant messaging framework for Android
 - **Open Source.** The Chat SDK is open source
 - **Full control of the data.** You have full and exclusive access to the user's chat data
 - **Quick integration.** Chat SDK is fully featured out of the box
-- Install the demo **[Firebase](https://i.diawi.com/TWnpgq)** or **[XMPP](https://i.diawi.com/yFyY9U)** app now by clicking the link on your Android phone! 
+- Install the demo **[Firebase](https://i.diawi.com/dcYq4p)** or **[XMPP](https://i.diawi.com/yFyY9U)** app now by clicking the link on your Android phone! 
 - **Scalable.** Supports millons of daily users [[1](https://firebase.google.com/docs/database/usage/limits), [2](https://blog.process-one.net/ejabberd-massive-scalability-1node-2-million-concurrent-users/)]
 - **Backend agnostic.** Chat SDK can be customized to [support any backend](https://github.com/chat-sdk/chat-sdk-android#backend-agnostic-architecture) 
 
@@ -120,9 +120,9 @@ repositories {
 Then add this to your `dependencies` area:
 
 ```
-implementation 'co.chatsdk.chatsdk:chat-sdk-ui:4.0.27'
-implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-adapter:4.0.27'
-implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-file-storage:4.0.27'
+compile 'co.chatsdk.chatsdk:chat-sdk-ui:4.1.2'
+compile 'co.chatsdk.chatsdk:chat-sdk-firebase-adapter:4.1.2'
+compile 'co.chatsdk.chatsdk:chat-sdk-firebase-file-storage:4.1.2'
 ```
 
 You may also need to enable Java 8:
@@ -307,7 +307,7 @@ Add the following to your `build.gradle`
 *Gradle*
 
 ```
-implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-push:4.0.27'
+compile 'co.chatsdk.chatsdk:chat-sdk-firebase-push:4.1.2'
 ```
 
 [*Manual Import*](https://github.com/chat-sdk/chat-sdk-android#adding-modules-manually)
@@ -338,7 +338,7 @@ FirebasePushModule.activateForFirebase();
 Add the following to your `build.gradle`
 
 ```
-implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-ui:4.0.27'
+compile 'co.chatsdk.chatsdk:chat-sdk-firebase-ui:4.1.2'
 ```
 
 ##### Enable the module
@@ -346,7 +346,7 @@ implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-ui:4.0.27'
 Add the following to the end of your `onCreate` method:
 
 ```
-FirebaseUIModule.activate(context, AuthUI.EMAIL_PROVIDER, AuthUI.PHONE_VERIFICATION_PROVIDER);
+FirebaseUIModule.activate(context, GoogleAuthProvider.PROVIDER_ID, PhoneAuthProvider.PROVIDER_ID);
 ```
 
 Add this to your `AndroidManifest.xml`
@@ -359,6 +359,14 @@ Add this to your `AndroidManifest.xml`
     </intent-filter>
 </activity>
 ```
+
+To specify your own splash screen, you need to make a subclass of the `SplashScrenActivity`. Then call:
+
+```
+FirebaseUIModule.shared().setSplashScreen([your subclass]);
+```
+
+Also make sure to update the Android Manifest with this class too. 
 
 You can provide a list of providers as outlined in the [Firebase documentation](https://github.com/firebase/FirebaseUI-Android/blob/master/auth/README.md#sign-in-examples). 
 
@@ -374,7 +382,7 @@ Add the following to your `build.gradle`
 *Gradle*
 
 ```
-implementation 'co.chatsdk.chatsdk:chat-sdk-firebase-social-login:4.0.27'
+compile 'co.chatsdk.chatsdk:chat-sdk-firebase-social-login:4.1.2'
 ```
 
 [*Manual Import*](https://github.com/chat-sdk/chat-sdk-android#adding-modules-manually)
@@ -564,13 +572,10 @@ Now that the modules have been added, we need to configure the project.
 Now you will see that gradle cannot be sync because it missing some parameters. Open to **gradle.properties** file in the root of the project and make sure the following lines are set to the [latest values](https://github.com/chat-sdk/chat-sdk-android/blob/master/gradle.properties).
 
 ```
-MIN_SDK = 
-ANDROID_BUILD_TARGET_SDK_VERSION = 
-ANDROID_COMPILE_SDK_VERSION = 
-
-GOOGLE_SERVICES_VERSION = 
-ANDROID_SUPPORT_VERSION = 
-ANDROID_BUILD_TOOLS_VERSION = 
+MIN_SDK = 16
+ANDROID_BUILD_TARGET_SDK_VERSION = 25
+ANDROID_COMPILE_SDK_VERSION = 27
+ANDROID_SUPPORT_VERSION = 27.1.1
 ```
 
 > **Note:**
