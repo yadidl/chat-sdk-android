@@ -91,7 +91,7 @@ public abstract class ThreadsFragment extends BaseFragment {
         });
     }
 
-    protected boolean allowThreadCreation () {
+    protected boolean allowThreadCreation() {
         return true;
     }
 

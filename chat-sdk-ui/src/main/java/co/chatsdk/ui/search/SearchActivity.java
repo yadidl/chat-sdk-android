@@ -77,8 +77,7 @@ public class SearchActivity extends BaseActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == android.R.id.home)
-        {
+        if (item.getItemId() == android.R.id.home) {
             onBackPressed();
         }
         return true;
@@ -100,8 +99,7 @@ public class SearchActivity extends BaseActivity {
         // Listening to key press - if they click the ok button on the keyboard
         // we start the search
         searchTextView.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEARCH)
-            {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 searchImageView.callOnClick();
             }
 
