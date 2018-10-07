@@ -108,15 +108,14 @@ public class ThreadEditDetailsActivity extends BaseActivity {
 
             disposableList.add(ChatSDK.publicThread().createPublicThreadWithName(threadName)
                     .observeOn(AndroidSchedulers.mainThread())
-                    .subscribe((_thread, throwable) -> {
+                    .subscribe((newThread, throwable) -> {
                         if (throwable == null) {
                             // TODO: permanently move thread name into meta data
-                            thread.setMetaValue("name", threadName);
-                            disposableList.add(ChatSDK.thread().pushThreadMeta(thread).subscribe(() -> {
+                            newThread.setMetaValue("name", threadName);
+                            disposableList.add(ChatSDK.thread().pushThreadMeta(newThread).subscribe(() -> {
                                 dismissProgressDialog();
                                 ToastHelper.show(ChatSDK.shared().context(), String.format(getString(co.chatsdk.ui.R.string.public_thread__is_created), threadName));
-
-                                ChatSDK.ui().startChatActivityForID(ChatSDK.shared().context(), _thread.getEntityID());
+                                ChatSDK.ui().startChatActivityForID(ChatSDK.shared().context(), newThread.getEntityID());
                             }));
                         } else {
                             ChatSDK.logError(throwable);
