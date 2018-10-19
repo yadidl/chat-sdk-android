@@ -65,7 +65,6 @@ public class EditProfileActivity extends BaseActivity {
     @Override
     protected void onCreate (Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.chat_sdk_edit_profile);
 
         String userEntityID = getIntent().getStringExtra(InterfaceManager.USER_ENTITY_ID);
 
@@ -84,6 +83,7 @@ public class EditProfileActivity extends BaseActivity {
     }
 
     protected void initViews() {
+        setContentView(R.layout.chat_sdk_edit_profile);
 
         avatarImageView = findViewById(R.id.ivAvatar);
         statusEditText = findViewById(R.id.etStatus);
