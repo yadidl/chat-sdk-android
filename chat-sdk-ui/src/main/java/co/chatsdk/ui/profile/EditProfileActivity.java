@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.annotation.LayoutRes;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -82,8 +83,12 @@ public class EditProfileActivity extends BaseActivity {
         initViews();
     }
 
+    protected @LayoutRes int activityLayout() {
+        return R.layout.chat_sdk_edit_profile;
+    }
+
     protected void initViews() {
-        setContentView(R.layout.chat_sdk_edit_profile);
+        setContentView(activityLayout());
 
         avatarImageView = findViewById(R.id.ivAvatar);
         statusEditText = findViewById(R.id.etStatus);
