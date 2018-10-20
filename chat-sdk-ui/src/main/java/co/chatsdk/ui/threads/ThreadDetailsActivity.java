@@ -9,6 +9,7 @@ package co.chatsdk.ui.threads;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.support.annotation.LayoutRes;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.view.Menu;
@@ -66,7 +67,7 @@ public class ThreadDetailsActivity extends BaseActivity {
             }
         }
 
-        setContentView(R.layout.chat_sdk_activity_thread_details);
+        setContentView(activityLayout());
 
         initViews();
 
@@ -75,6 +76,10 @@ public class ThreadDetailsActivity extends BaseActivity {
                 .subscribe(networkEvent -> loadData()));
 
         loadData();
+    }
+
+    protected @LayoutRes int activityLayout() {
+        return R.layout.chat_sdk_activity_thread_details;
     }
 
     protected void initViews() {
