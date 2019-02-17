@@ -2,6 +2,7 @@ package co.chatsdk.ui.manager;
 
 import android.content.Context;
 import android.content.Intent;
+import android.util.SparseArray;
 
 import androidx.fragment.app.Fragment;
 import androidx.appcompat.app.AppCompatActivity;
@@ -64,8 +65,11 @@ public class BaseInterfaceAdapter implements InterfaceAdapter {
     public boolean defaultChatOptionsAdded = false;
     public LocalNotificationHandler localNotificationHandler;
     public NotificationDisplayHandler notificationDisplayHandler;
+    public SparseArray<Tab> additionalTaps = new SparseArray<>();
+    public Context context;
 
     public BaseInterfaceAdapter (Context context) {
+        this.context = context;
 
         DiskCacheConfig diskCacheConfig = DiskCacheConfig
                 .newBuilder(context)
@@ -89,39 +93,71 @@ public class BaseInterfaceAdapter implements InterfaceAdapter {
         setMessageHandler(new TextMessageDisplayHandler(), new MessageType(MessageType.Text));
         setMessageHandler(new ImageMessageDisplayHandler(), new MessageType(MessageType.Image));
         setMessageHandler(new LocationMessageDisplayHandler(), new MessageType(MessageType.Location));
-
     }
 
     @Override
     public List<Tab> defaultTabs() {
-
         ArrayList<Tab> tabs = new ArrayList<>();
         tabs.add(privateThreadsTab());
         tabs.add(publicThreadsTab());
         tabs.add(contactsTab());
         tabs.add(profileTab());
-
         return tabs;
     }
 
     @Override
+    public List<Tab> tabs() {
+        List<Tab> tabs = defaultTabs();
+        for (int i = 0; i < additionalTaps.size(); i++) {
+            int key = additionalTaps.keyAt(i);
+            tabs.add(key, additionalTaps.get(key));
+        }
+        return tabs;
+    }
+
+    @Override
+    public void addTab(Tab tab) {
+        additionalTaps.append(tabs().size(), tab);
+    }
+
+    @Override
+    public void addTab(int index, Tab tab) {
+        additionalTaps.append(index, tab);
+    }
+
+    @Override
+    public void addTab(String title, int icon, Fragment fragment) {
+        addTab(new Tab(title, icon, fragment));
+    }
+
+    @Override
+    public void addTab(int index, String title, int icon, Fragment fragment) {
+        addTab(index, new Tab(title, icon, fragment));
+    }
+
+    @Override
+    public void removeTab(int index) {
+        additionalTaps.remove(index);
+    }
+
+    @Override
     public Tab privateThreadsTab() {
-        return new Tab(R.string.conversations, R.drawable.ic_action_private, privateThreadsFragment());
+        return new Tab(context.getString(R.string.conversations), R.drawable.ic_action_private, privateThreadsFragment());
     }
 
     @Override
     public Tab publicThreadsTab() {
-        return new Tab(R.string.chat_rooms, R.drawable.ic_action_public, publicThreadsFragment());
+        return new Tab(context.getString(R.string.chat_rooms), R.drawable.ic_action_public, publicThreadsFragment());
     }
 
     @Override
     public Tab contactsTab() {
-        return new Tab(R.string.contacts, R.drawable.ic_action_contacts, contactsFragment());
+        return new Tab(context.getString(R.string.contacts), R.drawable.ic_action_contacts, contactsFragment());
     }
 
     @Override
     public Tab profileTab() {
-        return new Tab (R.string.profile, R.drawable.ic_action_user, profileFragment(null));
+        return new Tab (context.getString(R.string.profile), R.drawable.ic_action_user, profileFragment(null));
     }
 
     @Override
