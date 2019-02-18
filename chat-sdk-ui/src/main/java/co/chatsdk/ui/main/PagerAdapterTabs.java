@@ -22,30 +22,27 @@ import co.chatsdk.core.session.ChatSDK;
  */
 public class PagerAdapterTabs extends FragmentPagerAdapter {
 
-    protected List<Tab> tabs;
-
     public PagerAdapterTabs(FragmentManager fm) {
         super(fm);
-        tabs = ChatSDK.ui().tabs();
     }
 
     public List<Tab> getTabs() {
-        return tabs;
+        return ChatSDK.ui().tabs();
     }
 
     @Override
     public CharSequence getPageTitle(int position) {
-        return tabs.get(position).title;
+        return getTabs().get(position).title;
     }
 
     @Override
     public int getCount() {
-        return tabs.size();
+        return getTabs().size();
     }
 
     @Override
     public Fragment getItem(int position) {
-        return tabs.get(position).fragment;
+        return getTabs().get(position).fragment;
     }
 
 }
