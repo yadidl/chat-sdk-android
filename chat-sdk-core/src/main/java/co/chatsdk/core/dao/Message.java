@@ -4,6 +4,7 @@ package co.chatsdk.core.dao;
 
 // KEEP INCLUDES - put your token includes here
 
+
 import com.google.android.gms.maps.model.LatLng;
 
 import org.greenrobot.greendao.DaoException;
@@ -13,35 +14,32 @@ import org.greenrobot.greendao.annotation.Generated;
 import org.greenrobot.greendao.annotation.Id;
 import org.greenrobot.greendao.annotation.ToMany;
 import org.greenrobot.greendao.annotation.ToOne;
-import org.greenrobot.greendao.annotation.Transient;
 import org.greenrobot.greendao.annotation.Unique;
 import org.joda.time.DateTime;
-import org.json.JSONException;
-import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 
-import co.chatsdk.core.session.NM;
-import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.interfaces.CoreEntity;
+import co.chatsdk.core.session.ChatSDK;
+import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.types.MessageSendStatus;
 import co.chatsdk.core.types.MessageType;
 import co.chatsdk.core.types.ReadStatus;
 import co.chatsdk.core.utils.DaoDateTimeConverter;
-import timber.log.Timber;
 
 @Entity
 public class Message implements CoreEntity {
 
-    @Id private Long id;
+    @Id
+    private Long id;
 
-    @Unique private String entityID;
+    @Unique
+    private String entityID;
 
     @Convert(converter = DaoDateTimeConverter.class, columnType = Long.class)
     private DateTime date;
-    private String text;
     private Boolean read;
     private Integer type;
     private Integer status;
@@ -50,7 +48,7 @@ public class Message implements CoreEntity {
     private Long nextMessageId;
     private Long lastMessageId;
 
-    @ToMany(referencedJoinProperty = "readReceiptId")
+    @ToMany(referencedJoinProperty = "messageId")
     private List<ReadReceiptUserLink> readReceiptLinks;
 
     @ToOne(joinProperty = "senderId")
@@ -65,12 +63,8 @@ public class Message implements CoreEntity {
     @ToOne(joinProperty = "lastMessageId")
     private Message lastMessage;
 
-    @Transient
-    public static final String TAG = Message.class.getSimpleName();
-
-    // We cache the payload to improve performance
-    @Transient
-    private JSONObject jsonPayload;
+    @ToMany(referencedJoinProperty = "messageId")
+    private List<MessageMetaValue> metaValues;
 
     /** Used to resolve relations */
     @Generated(hash = 2040040024)
@@ -80,13 +74,13 @@ public class Message implements CoreEntity {
     @Generated(hash = 859287859)
     private transient MessageDao myDao;
 
-    @Generated(hash = 504905291)
-    public Message(Long id, String entityID, DateTime date, String text, Boolean read, Integer type,
-            Integer status, Long senderId, Long threadId, Long nextMessageId, Long lastMessageId) {
+    @Generated(hash = 842349170)
+    public Message(Long id, String entityID, DateTime date, Boolean read, Integer type,
+            Integer status, Long senderId, Long threadId, Long nextMessageId,
+            Long lastMessageId) {
         this.id = id;
         this.entityID = entityID;
         this.date = date;
-        this.text = text;
         this.read = read;
         this.type = type;
         this.status = status;
@@ -100,11 +94,11 @@ public class Message implements CoreEntity {
     public Message() {
     }
 
-    @Generated(hash = 1974258785)
-    private transient Long thread__resolvedKey;
-
     @Generated(hash = 880682693)
     private transient Long sender__resolvedKey;
+
+    @Generated(hash = 1974258785)
+    private transient Long thread__resolvedKey;
 
     @Generated(hash = 992601680)
     private transient Long nextMessage__resolvedKey;
@@ -113,7 +107,7 @@ public class Message implements CoreEntity {
     private transient Long lastMessage__resolvedKey;
 
     public boolean isRead() {
-        ReadStatus status = readStatusForUser(NM.currentUser());
+        ReadStatus status = readStatusForUser(ChatSDK.currentUser());
         if (status != null && status.is(ReadStatus.read())) {
             return true;
         }
@@ -157,35 +151,64 @@ public class Message implements CoreEntity {
         this.date = date;
     }
 
-    public String getRawJSONPayload() {
-        return this.text;
+    public HashMap<String, Object> getMetaValuesAsMap() {
+        HashMap<String, Object> values = new HashMap<>();
+        for (MessageMetaValue v : getMetaValues()) {
+            values.put(v.getKey(), v.getValue());
+        }
+        return values;
     }
 
-    public void setRawJSONPayload (String payload) {
-        this.text = payload;
+    public void setMetaValues(HashMap<String, Object> json) {
+        for (String key : json.keySet()) {
+            setMetaValue(key, json.get(key));
+        }
+    }
+
+    protected void setMetaValue(String key, Object value) {
+        MessageMetaValue metaValue = (MessageMetaValue) metaValue(key);
+        if (metaValue == null) {
+            metaValue = ChatSDK.db().createEntity(MessageMetaValue.class);
+            metaValue.setMessageId(this.getId());
+            getMetaValues().add(metaValue);
+        }
+        metaValue.setValue(MetaValueHelper.toString(value));
+        metaValue.setKey(key);
+        metaValue.update();
+        update();
+    }
+
+    protected MetaValue metaValue (String key) {
+        ArrayList<MetaValue> values = new ArrayList<>();
+        values.addAll(getMetaValues());
+        return MetaValueHelper.metaValueForKey(key, values);
     }
 
     public Object valueForKey (String key) {
-
-        try {
-            String json = getRawJSONPayload();
-            if(json == null || json.length() == 0 ) {
-                return "";
-            }
-            if(jsonPayload == null) {
-                jsonPayload = new JSONObject(json);
-            }
-            if(jsonPayload.has(key)) {
-                return  jsonPayload.get(key);
-            }
-            else {
-                return "";
-            }
+        MetaValue value = metaValue(key);
+        if (value != null && value.getValue() != null) {
+            return MetaValueHelper.toObject(value.getValue());
+        } else {
+            return null;
         }
-        catch (JSONException e) {
-            Timber.v(e.getLocalizedMessage());
-//            e.printStackTrace();
-            return "";
+    }
+
+    public String stringForKey (String key) {
+        Object value = valueForKey(key);
+        if (value == null) return "";
+        if (value instanceof String) {
+            return (String) value;
+        }
+        return value.toString();
+    }
+
+    public Double doubleForKey (String key) {
+        Object value = valueForKey(key);
+        if (value instanceof Double) {
+            return (Double) value;
+        }
+        else {
+            return (double) 0;
         }
     }
 
@@ -204,77 +227,33 @@ public class Message implements CoreEntity {
     public void setUserReadStatus (User user, ReadStatus status, DateTime date) {
         ReadReceiptUserLink link = linkForUser(user);
         if(link == null) {
-            link = StorageManager.shared().createEntity(ReadReceiptUserLink.class);
-            readReceiptLinks.add(link);
-            update();
+            link = ChatSDK.db().createEntity(ReadReceiptUserLink.class);
+            link.setMessageId(this.getId());
+            getReadReceiptLinks().add(link);
         }
         link.setUser(user);
         link.setStatus(status.getValue());
         link.setDate(date);
 
         link.update();
+        update();
     }
 
     public LatLng getLocation () {
-        Double latitude = (Double) valueForKey(Keys.MessageLatitude);
-        Double longitude = (Double) valueForKey(Keys.MessageLongitude);
+        Double latitude = doubleForKey(Keys.MessageLatitude);
+        Double longitude = doubleForKey(Keys.MessageLongitude);
         return new LatLng(latitude, longitude);
     }
 
     public void setValueForKey (Object payload, String key) {
-        try {
-            if(jsonPayload == null) {
-                String jsonString = getRawJSONPayload();
-                jsonPayload = jsonString != null ? new JSONObject(jsonString) : new JSONObject();
-            }
-            jsonPayload.put(key, payload);
-            setRawJSONPayload(jsonPayload.toString());
-        }
-        catch (JSONException e) {
-            Timber.v(e.getLocalizedMessage());
-//            e.printStackTrace();
-        }
+        setMetaValue(key, payload);
     }
 
-    public HashMap<String, Object> values () {
-        HashMap<String, Object> values = new HashMap<>();
-        try {
-            JSONObject json = new JSONObject(getRawJSONPayload());
-
-            for(Iterator<String> iter = json.keys(); iter.hasNext(); ) {
-                String key = iter.next();
-                values.put(key, json.get(key));
-            }
-        }
-        catch (JSONException e) {
-        }
-        finally {
-            return values;
-        }
+    public String getText() {
+        return stringForKey(Keys.MessageText);
     }
 
-    /**
-     * This is used internally - if you want the message text,
-     * you should use getTextString method instead.
-     * @return Raw JSON message payload
-     */
-    public String getText () {
-        return getRawJSONPayload();
-    }
-
-    public String getTextString() {
-        return valueForKey(Keys.MessageText).toString();
-    }
-
-    /**
-     * This is used internally - if you want to set the message text,
-     * you should use setTextString method instead.
-     * @param text Raw JSON message payload
-     */
     public void setText(String text) {
-        setRawJSONPayload(text);
-    }
-    public void setTextString(String text) {
         setValueForKey(text, Keys.MessageText);
     }
 
@@ -284,16 +263,16 @@ public class Message implements CoreEntity {
 
     public MessageType getMessageType() {
         if(this.type != null) {
-            return MessageType.values()[this.type];
+            return new MessageType(this.type);
         }
-        return MessageType.None;
+        return new MessageType(MessageType.None);
     }
 
     public void setType(Integer type) {
         this.type = type;
     }
     public void setMessageType(MessageType type) {
-        this.type = type.ordinal();
+        this.type = type.value();
     }
 
     public Integer getStatus() {
@@ -372,6 +351,32 @@ public class Message implements CoreEntity {
         this.read = read;
     }
 
+    public void cascadeDelete () {
+        for (MessageMetaValue value : getMetaValues()) {
+            value.delete();
+        }
+        for (ReadReceiptUserLink link : getReadReceiptLinks()) {
+            link.delete();
+        }
+        delete();
+    }
+
+    public Long getNextMessageId() {
+        return this.nextMessageId;
+    }
+
+    public void setNextMessageId(Long nextMessageId) {
+        this.nextMessageId = nextMessageId;
+    }
+
+    public Long getLastMessageId() {
+        return this.lastMessageId;
+    }
+
+    public void setLastMessageId(Long lastMessageId) {
+        this.lastMessageId = lastMessageId;
+    }
+
     /** To-one relationship, resolved on first access. */
     @Generated(hash = 1145839495)
     public User getSender() {
@@ -430,94 +435,6 @@ public class Message implements CoreEntity {
         }
     }
 
-    /**
-     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#delete(Object)}.
-     * Entity must attached to an entity context.
-     */
-    @Generated(hash = 128553479)
-    public void delete() {
-        if (myDao == null) {
-            throw new DaoException("Entity is detached from DAO context");
-        }
-        myDao.delete(this);
-    }
-
-    /**
-     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#refresh(Object)}.
-     * Entity must attached to an entity context.
-     */
-    @Generated(hash = 1942392019)
-    public void refresh() {
-        if (myDao == null) {
-            throw new DaoException("Entity is detached from DAO context");
-        }
-        myDao.refresh(this);
-    }
-
-    /**
-     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#update(Object)}.
-     * Entity must attached to an entity context.
-     */
-    @Generated(hash = 713229351)
-    public void update() {
-        if (myDao == null) {
-            throw new DaoException("Entity is detached from DAO context");
-        }
-        myDao.update(this);
-    }
-
-    /** called by internal mechanisms, do not call yourself. */
-    @Generated(hash = 747015224)
-    public void __setDaoSession(DaoSession daoSession) {
-        this.daoSession = daoSession;
-        myDao = daoSession != null ? daoSession.getMessageDao() : null;
-    }
-
-    /**
-     * To-many relationship, resolved on first access (and after reset).
-     * Changes to to-many relations are not persisted, make changes to the target entity.
-     */
-    @Generated(hash = 2025183823)
-    public List<ReadReceiptUserLink> getReadReceiptLinks() {
-        if (readReceiptLinks == null) {
-            final DaoSession daoSession = this.daoSession;
-            if (daoSession == null) {
-                throw new DaoException("Entity is detached from DAO context");
-            }
-            ReadReceiptUserLinkDao targetDao = daoSession.getReadReceiptUserLinkDao();
-            List<ReadReceiptUserLink> readReceiptLinksNew = targetDao
-                    ._queryMessage_ReadReceiptLinks(id);
-            synchronized (this) {
-                if (readReceiptLinks == null) {
-                    readReceiptLinks = readReceiptLinksNew;
-                }
-            }
-        }
-        return readReceiptLinks;
-    }
-
-    /** Resets a to-many relationship, making the next get call to query for a fresh result. */
-    @Generated(hash = 273652628)
-    public synchronized void resetReadReceiptLinks() {
-        readReceiptLinks = null;
-    }
-
-    public Long getNextMessageId() {
-        return this.nextMessageId;
-    }
-
-    public void setNextMessageId(Long nextMessageId) {
-        this.nextMessageId = nextMessageId;
-    }
-
-    public Long getLastMessageId() {
-        return this.lastMessageId;
-    }
-
-    public void setLastMessageId(Long lastMessageId) {
-        this.lastMessageId = lastMessageId;
-    }
-
     /** To-one relationship, resolved on first access. */
     @Generated(hash = 871948279)
     public Message getNextMessage() {
@@ -574,6 +491,106 @@ public class Message implements CoreEntity {
             lastMessageId = lastMessage == null ? null : lastMessage.getId();
             lastMessage__resolvedKey = lastMessageId;
         }
+    }
+
+    /**
+     * To-many relationship, resolved on first access (and after reset).
+     * Changes to to-many relations are not persisted, make changes to the target entity.
+     */
+    @Generated(hash = 2025183823)
+    public List<ReadReceiptUserLink> getReadReceiptLinks() {
+        if (readReceiptLinks == null) {
+            final DaoSession daoSession = this.daoSession;
+            if (daoSession == null) {
+                throw new DaoException("Entity is detached from DAO context");
+            }
+            ReadReceiptUserLinkDao targetDao = daoSession.getReadReceiptUserLinkDao();
+            List<ReadReceiptUserLink> readReceiptLinksNew = targetDao
+                    ._queryMessage_ReadReceiptLinks(id);
+            synchronized (this) {
+                if (readReceiptLinks == null) {
+                    readReceiptLinks = readReceiptLinksNew;
+                }
+            }
+        }
+        return readReceiptLinks;
+    }
+
+    /** Resets a to-many relationship, making the next get call to query for a fresh result. */
+    @Generated(hash = 273652628)
+    public synchronized void resetReadReceiptLinks() {
+        readReceiptLinks = null;
+    }
+
+    /**
+     * To-many relationship, resolved on first access (and after reset).
+     * Changes to to-many relations are not persisted, make changes to the target entity.
+     */
+    @Generated(hash = 2015206446)
+    public List<MessageMetaValue> getMetaValues() {
+        if (metaValues == null) {
+            final DaoSession daoSession = this.daoSession;
+            if (daoSession == null) {
+                throw new DaoException("Entity is detached from DAO context");
+            }
+            MessageMetaValueDao targetDao = daoSession.getMessageMetaValueDao();
+            List<MessageMetaValue> metaValuesNew = targetDao._queryMessage_MetaValues(id);
+            synchronized (this) {
+                if (metaValues == null) {
+                    metaValues = metaValuesNew;
+                }
+            }
+        }
+        return metaValues;
+    }
+
+    /** Resets a to-many relationship, making the next get call to query for a fresh result. */
+    @Generated(hash = 365870950)
+    public synchronized void resetMetaValues() {
+        metaValues = null;
+    }
+
+    /**
+     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#delete(Object)}.
+     * Entity must attached to an entity context.
+     */
+    @Generated(hash = 128553479)
+    public void delete() {
+        if (myDao == null) {
+            throw new DaoException("Entity is detached from DAO context");
+        }
+        myDao.delete(this);
+    }
+
+    /**
+     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#refresh(Object)}.
+     * Entity must attached to an entity context.
+     */
+    @Generated(hash = 1942392019)
+    public void refresh() {
+        if (myDao == null) {
+            throw new DaoException("Entity is detached from DAO context");
+        }
+        myDao.refresh(this);
+    }
+
+    /**
+     * Convenient call for {@link org.greenrobot.greendao.AbstractDao#update(Object)}.
+     * Entity must attached to an entity context.
+     */
+    @Generated(hash = 713229351)
+    public void update() {
+        if (myDao == null) {
+            throw new DaoException("Entity is detached from DAO context");
+        }
+        myDao.update(this);
+    }
+
+    /** called by internal mechanisms, do not call yourself. */
+    @Generated(hash = 747015224)
+    public void __setDaoSession(DaoSession daoSession) {
+        this.daoSession = daoSession;
+        myDao = daoSession != null ? daoSession.getMessageDao() : null;
     }
 
 }

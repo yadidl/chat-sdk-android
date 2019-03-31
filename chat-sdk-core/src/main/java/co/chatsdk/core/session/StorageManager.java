@@ -26,10 +26,22 @@ import static co.chatsdk.core.dao.DaoCore.fetchEntityWithProperty;
 
 public class StorageManager {
 
-    private final static StorageManager instance = new StorageManager();
+    public List<Thread> fetchThreadsForUserWithID (Long userId) {
+        List<Thread> threads = new ArrayList<>();
 
-    public static StorageManager shared() {
-        return instance;
+        List<UserThreadLink> links = DaoCore.fetchEntitiesWithProperty(UserThreadLink.class, UserThreadLinkDao.Properties.UserId, ChatSDK.currentUser().getId());
+
+        for (UserThreadLink link : links) {
+            Thread thread = link.getThread();
+            if (thread != null) {
+                threads.add(thread);
+            }
+            else {
+                // Delete the link - it's obviously corrupted
+                DaoCore.deleteEntity(link);
+            }
+        }
+        return threads;
     }
 
     public <T extends CoreEntity> T fetchOrCreateEntityWithEntityID(Class<T> c, String entityId){
@@ -94,13 +106,14 @@ public class StorageManager {
     }
 
     public List<Thread> allThreads () {
-        List<UserThreadLink> links =  DaoCore.fetchEntitiesWithProperty(UserThreadLink.class, UserThreadLinkDao.Properties.UserId, NM.currentUser().getId());
+        List<UserThreadLink> links =  DaoCore.fetchEntitiesWithProperty(UserThreadLink.class, UserThreadLinkDao.Properties.UserId, ChatSDK.currentUser().getId());
         ArrayList<Thread> threads = new ArrayList<>();
         for(UserThreadLink link : links) {
             threads.add(link.getThread());
         }
         return threads;
     }
+
 
     public List<Message> fetchMessagesForThreadWithID (long threadID, int limit) {
         return fetchMessagesForThreadWithID(threadID, limit, null);

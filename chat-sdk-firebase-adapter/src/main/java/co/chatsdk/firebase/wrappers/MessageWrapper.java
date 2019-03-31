@@ -40,15 +40,14 @@ public class MessageWrapper  {
     }
 
     public MessageWrapper(DataSnapshot snapshot){
-        this.model = StorageManager.shared().fetchOrCreateEntityWithEntityID(Message.class, snapshot.getKey());
+        this.model = ChatSDK.db().fetchOrCreateEntityWithEntityID(Message.class, snapshot.getKey());
         deserialize(snapshot);
     }
 
     Map<String, Object> serialize() {
         Map<String, Object> values = new HashMap<String, Object>();
 
-        values.put(Keys.Payload, model.getTextString());
-        values.put(Keys.JSON, model.getRawJSONPayload());
+        values.put(Keys.JSON, model.getMetaValuesAsMap());
         values.put(Keys.Date, ServerValue.TIMESTAMP);
         values.put(Keys.Type, model.getType());
         values.put(Keys.UserFirebaseId, model.getSender().getEntityID());
@@ -110,19 +109,13 @@ public class MessageWrapper  {
         //if (DEBUG) Timber.v("deserialize, Value: %s", value);
         if (value == null) return;
 
-        String json = string(value, Keys.JSON);
+        Object json = snapshot.child(Keys.JSON).getValue();
 
-        if(json != null) {
-            model.setRawJSONPayload(json);
+        if (json != null && json instanceof HashMap) {
+            model.setMetaValues((HashMap) json);
         }
         else {
-            String text = string(value, Keys.Payload);
-            if(text != null) {
-                model.setTextString(text);
-            }
-            else {
-                model.setTextString("");
-            }
+            model.setText("");
         }
 
         Long type = long_(value, Keys.Type);
@@ -132,6 +125,12 @@ public class MessageWrapper  {
 
         Long date = long_(value, Keys.Date);
         if(date != null) {
+            // If the server time of the message is too different to local time
+            // set the status to none, which causes the message to be refreshed
+            // in the chat view.
+            if (this.getModel().getDate() == null || Math.abs(this.getModel().getDate().toDate().getTime() - date) > 1000) {
+                model.setMessageStatus(MessageSendStatus.None);
+            }
             model.setDate(new DateTime(date));
         }
 
@@ -140,7 +139,7 @@ public class MessageWrapper  {
             User user = DaoCore.fetchEntityWithEntityID(User.class, senderID);
             if (user == null)
             {
-                user = StorageManager.shared().fetchOrCreateEntityWithEntityID(User.class, senderID);
+                user = ChatSDK.db().fetchOrCreateEntityWithEntityID(User.class, senderID);
                 UserWrapper.initWithModel(user).once();
             }
 
@@ -160,7 +159,7 @@ public class MessageWrapper  {
     public void updateReadReceipts (HashMap<String, Object> map) {
         for(String key : map.keySet()) {
 
-            User user = StorageManager.shared().fetchOrCreateEntityWithEntityID(User.class, key);
+            User user = ChatSDK.db().fetchOrCreateEntityWithEntityID(User.class, key);
 
             Object innerMap = map.get(key);
 
@@ -189,7 +188,6 @@ public class MessageWrapper  {
             // Getting the message ref. Will be created if not exist.
             final DatabaseReference ref = ref();
             model.setEntityID(ref.getKey());
-
             DaoCore.updateEntity(model);
 
             ref.setValue(serialize(), ServerValue.TIMESTAMP, (firebaseError, firebase) -> {
@@ -221,8 +219,6 @@ public class MessageWrapper  {
 
     public HashMap<String, Object> lastMessageData () {
         HashMap<String, Object> map = new HashMap<>();
-        map.put(Keys.Payload, model.getTextString());
-        map.put(Keys.JSON, model.getText());
         map.put(Keys.Type, model.getType());
         map.put(Keys.Date, ServerValue.TIMESTAMP);
         map.put(Keys.UserFirebaseId, model.getSender().getEntityID());

@@ -25,11 +25,11 @@ public class Keys {
     public static final String UserFirebaseId = "user-firebase-id";
     public static final String Color = "color";
     public static final String Name = "name";
+    public static final String NameLowercase = "name-lowercase";
     public static final String Null = "null";
     public static final String InvitedBy = "invitedBy";
     public static final String CreationDate = "creation-date";
-    public static final String Payload = "payload";
-    public static final String JSON = "JSON";
+    public static final String JSON = "json_v2";
     public static final String Type = "type";
     public static final String Type_v4 = "type_v4";
     public static final String Online = "online";
@@ -59,6 +59,8 @@ public class Keys {
     public static final String MessageAudioURL = "audio-url";
     public static final String MessageAudioLength = "audio-length";
     public static final String MessageStickerName = "sticker";
+    public static final String MessageMimeType = "mime-type";
+    public static final String MessageFileURL = "file-url";
 
     // CoreUser details
     public static final String Gender = "gender";
@@ -66,6 +68,11 @@ public class Keys {
     public static final String Location = "location";
     public static final String DateOfBirth = "date-of-birth";
     public static final String Status = "status";
-    public static final String PushToken = "pushToken";
+
+    // For push notifications
+    public static String USER_ENTITY_ID = "chat_sdk_user_entity_id";
+    public static final String THREAD_ENTITY_ID = "chat_sdk_thread_entity_id";
+    public static final String PUSH_TITLE = "chat_sdk_push_title";
+    public static final String PUSH_BODY = "chat_sdk_push_body";
 
 }

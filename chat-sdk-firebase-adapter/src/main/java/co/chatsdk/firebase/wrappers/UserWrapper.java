@@ -31,6 +31,7 @@ import co.chatsdk.core.session.ChatSDK;
 import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.utils.CrashReportingCompletableObserver;
 import co.chatsdk.core.utils.StringChecker;
+import co.chatsdk.core.utils.HashMapHelper;
 import co.chatsdk.firebase.FirebaseEntity;
 import co.chatsdk.firebase.FirebaseEventListener;
 import co.chatsdk.firebase.FirebasePaths;
@@ -45,7 +46,6 @@ import timber.log.Timber;
 
 public class UserWrapper {
 
-    private static final String USER_PREFIX = "user";
     private User model;
 
     public static UserWrapper initWithAuthData(FirebaseUser authData){
@@ -61,12 +61,12 @@ public class UserWrapper {
     }
 
     public static UserWrapper initWithEntityId(String entityId){
-        User model = StorageManager.shared().fetchOrCreateEntityWithEntityID(User.class, entityId);
+        User model = ChatSDK.db().fetchOrCreateEntityWithEntityID(User.class, entityId);
         return initWithModel(model);
     }
     
     private UserWrapper(FirebaseUser authData){
-        model = StorageManager.shared().fetchOrCreateEntityWithEntityID(User.class, authData.getUid());
+        model = ChatSDK.db().fetchOrCreateEntityWithEntityID(User.class, authData.getUid());
         updateUserFromAuthData(authData);
     }
 
@@ -75,7 +75,7 @@ public class UserWrapper {
     }
     
     public UserWrapper(DataSnapshot snapshot){
-        model = StorageManager.shared().fetchOrCreateEntityWithEntityID(User.class, snapshot.getKey());
+        model = ChatSDK.db().fetchOrCreateEntityWithEntityID(User.class, snapshot.getKey());
         deserialize((Map<String, Object>) snapshot.getValue());
     }
     
@@ -85,7 +85,7 @@ public class UserWrapper {
     private void updateUserFromAuthData(FirebaseUser authData){
         Timber.v("updateUserFromAuthData");
 
-//        model.setAuthenticationType((Integer) NM.auth().getLoginInfo().get(co.chatsdk.core.types.Defines.Prefs.AccountTypeKey));
+//        model.setAuthenticationType((Integer) ChatSDK.auth().getLoginInfo().get(co.chatsdk.core.types.Defines.Prefs.AccountTypeKey));
 
         model.setEntityID(authData.getUid());
 
@@ -125,7 +125,7 @@ public class UserWrapper {
 
         model.update();
 
-//        switch ((Integer) (NM.auth().getLoginInfo().get(co.chatsdk.core.types.Defines.Prefs.AccountTypeKey)))
+//        switch ((Integer) (ChatSDK.auth().getLoginInfo().get(co.chatsdk.core.types.Defines.Prefs.AccountTypeKey)))
 //        {
 //            case Defines.ProviderInt.Facebook:
 //                linkedAccount = model.getAccountWithType(LinkedAccount.Type.FACEBOOK);
@@ -193,6 +193,8 @@ public class UserWrapper {
                 if (hasValue && snapshot.getValue() instanceof Map) {
                     deserializeMeta((Map<String, Object>) snapshot.getValue());
                     e.onNext(model);
+                } else {
+                    e.onError(new Throwable("User doesn't exist"));
                 }
             }));
 
@@ -227,12 +229,17 @@ public class UserWrapper {
     void deserializeMeta(Map<String, Object> value){
         if (value != null) {
             Map<String, String> oldData = model.metaMap();
-            Map<String, Object> newData = value;
+
+            // Expand
+            Map<String, Object> newData = HashMapHelper.flatten(value);
 
             // Updating the old bundle
             for (String key : newData.keySet()) {
                 if (oldData.get(key) == null || !oldData.get(key).equals(newData.get(key))) {
-                    oldData.put(key, newData.get(key).toString());
+                    // We don't store availability data in the Firebase meta - it's handled by the online flag
+                    if (!key.equals(Keys.Availability)) {
+                        oldData.put(key, newData.get(key).toString());
+                    }
                 }
             }
 
@@ -265,10 +272,18 @@ public class UserWrapper {
         FirebaseReferenceManager.shared().removeListeners(ref);
     }
 
-    Map<String, Object> serialize(){
+    Map<String, Object> serialize() {
         Map<String, Object> values = new HashMap<>();
 
-        values.put(Keys.Meta, model.metaMap());
+        // Don't push availability to Firebase
+        HashMap<String, String> metaMap = new HashMap<>(model.metaMap());
+        metaMap.remove(Keys.Availability);
+        metaMap.put(Keys.NameLowercase, model.getName() != null ? model.getName().toLowerCase() : "");
+
+        // Expand
+        Map<String, Object> expandedMetaMap = HashMapHelper.expand(metaMap);
+
+        values.put(Keys.Meta, expandedMetaMap);
         values.put(Keys.LastOnline, ServerValue.TIMESTAMP);
 
         return values;
@@ -314,29 +329,6 @@ public class UserWrapper {
     
     public DatabaseReference ref(){
         return FirebasePaths.userRef(model.getEntityID());
-    }
-
-    private DatabaseReference imageRef(){
-        return ref().child(FirebasePaths.Image);
-    }
-
-    private DatabaseReference thumbnailRef(){
-        return ref().child(FirebasePaths.Thumbnail);
-    }
-
-    private DatabaseReference metaRef(){
-        return ref().child(FirebasePaths.MetaPath);
-    }
-
-    public String pushChannel(){
-        String channel = USER_PREFIX + (model.getEntityID().replace(":", "_"));
-        
-        if (channel.contains("%3A"))
-            channel = channel.replace("%3A", "_");
-        if (channel.contains("%253A"))
-            channel = channel.replace("%253A", "_");
-        
-        return channel;
     }
 
     public Completable updateIndex() {

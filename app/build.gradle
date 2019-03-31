@@ -7,13 +7,12 @@ android {
         preDexLibraries = false
     }
 
-
     defaultConfig {
         applicationId "co.chatsdk.android.app"
 
         multiDexEnabled = true
         minSdkVersion Integer.parseInt(project.MIN_SDK)
-        targetSdkVersion  Integer.parseInt(project.ANDROID_BUILD_TARGET_SDK_VERSION)
+        targetSdkVersion Integer.parseInt(project.ANDROID_BUILD_TARGET_SDK_VERSION)
 
         versionName CHAT_SDK_VERSION
         versionCode CHAT_SDK_BUILD_NUMBER as int
@@ -68,15 +67,15 @@ android {
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-    api 'com.android.support:multidex:1.0.3'
-    implementation project(path: ':chat-sdk-core')
+//    implementation fileTree(include: ['*.jar'], dir: 'libs')
+//    implementation project(path: ':chat-sdk-core')
+    implementation "androidx.multidex:multidex:$androidxMultidexVersion"
     implementation project(path: ':chat-sdk-ui')
     implementation project(path: ':chat-sdk-firebase-adapter')
     implementation project(path: ':chat-sdk-firebase-push')
     implementation project(path: ':chat-sdk-firebase-file-storage')
-
     implementation project(path: ':chat-sdk-firebase-ui')
+    implementation project(path: ':chat-sdk-profile-pictures')
 }
 
 apply plugin: 'com.google.gms.google-services'

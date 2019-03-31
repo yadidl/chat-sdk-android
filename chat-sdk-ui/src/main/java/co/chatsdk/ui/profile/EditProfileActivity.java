@@ -22,22 +22,21 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 
+import androidx.annotation.LayoutRes;
 import co.chatsdk.core.dao.Keys;
 import co.chatsdk.core.dao.User;
 import co.chatsdk.core.defines.Availability;
 import co.chatsdk.core.session.ChatSDK;
-import co.chatsdk.core.session.NM;
+import co.chatsdk.core.session.InterfaceManager;
 import co.chatsdk.core.session.StorageManager;
+import co.chatsdk.core.utils.DisposableList;
 import co.chatsdk.core.utils.ImageUtils;
 import co.chatsdk.ui.R;
 import co.chatsdk.ui.chat.MediaSelector;
 import co.chatsdk.ui.main.BaseActivity;
-import co.chatsdk.ui.manager.BaseInterfaceAdapter;
-import co.chatsdk.ui.manager.InterfaceManager;
 import id.zelory.compressor.Compressor;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 
@@ -57,34 +56,40 @@ public class EditProfileActivity extends BaseActivity {
     protected Button countryButton;
     protected Button logoutButton;
     protected HashMap<String, Object> userMeta;
-    private String avatarURL;
     protected MediaSelector mediaSelector = new MediaSelector();
 
     protected User currentUser;
 
+    private DisposableList disposableList = new DisposableList();
+
     @Override
     protected void onCreate (Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.chat_sdk_edit_profile);
 
-        String userEntityID = getIntent().getStringExtra(BaseInterfaceAdapter.USER_ENTITY_ID);
+        String userEntityID = getIntent().getStringExtra(Keys.USER_ENTITY_ID);
 
-        if(userEntityID == null || userEntityID.isEmpty()) {
+        if (userEntityID == null || userEntityID.isEmpty()) {
             showToast("User Entity ID not set");
             finish();
             return;
         }
         else {
-            currentUser =  StorageManager.shared().fetchUserWithEntityID(userEntityID);
+            currentUser =  ChatSDK.db().fetchUserWithEntityID(userEntityID);
 
             // Save a copy of the data to see if it has changed
             userMeta = new HashMap<>(currentUser.metaMap());
         }
+
+        setContentView(activityLayout());
+
         initViews();
     }
 
-    protected void initViews() {
+    protected @LayoutRes int activityLayout() {
+        return R.layout.chat_sdk_edit_profile;
+    }
 
+    protected void initViews() {
         avatarImageView = findViewById(R.id.ivAvatar);
         statusEditText = findViewById(R.id.etStatus);
         availabilitySpinner = findViewById(R.id.spAvailability);
@@ -105,51 +110,57 @@ public class EditProfileActivity extends BaseActivity {
         String email = currentUser.getEmail();
         String countryCode = currentUser.getCountryCode();
 
-        avatarImageView.setOnClickListener(view -> mediaSelector.startChooseImageActivity(EditProfileActivity.this, result -> {
+        avatarImageView.setOnClickListener(view -> {
+            if (ChatSDK.profilePictures() != null) {
+                ChatSDK.profilePictures().startProfilePicturesActivity(this, currentUser.getEntityID());
+            } else {
+                mediaSelector.startChooseImageActivity(EditProfileActivity.this, MediaSelector.CropType.Circle,result -> {
 
-            try{
-                File compress = new Compressor(ChatSDK.shared().context())
-                        .setMaxHeight(ChatSDK.config().imageMaxThumbnailDimension)
-                        .setMaxWidth(ChatSDK.config().imageMaxThumbnailDimension)
-                        .compressToFile(new File(result));
+                    try {
+                        File compress = new Compressor(ChatSDK.shared().context())
+                                .setMaxHeight(ChatSDK.config().imageMaxThumbnailDimension)
+                                .setMaxWidth(ChatSDK.config().imageMaxThumbnailDimension)
+                                .compressToFile(new File(result));
 
-                Bitmap bitmap = BitmapFactory.decodeFile(compress.getPath());
+                        Bitmap bitmap = BitmapFactory.decodeFile(compress.getPath());
 
-                // Cache the file
-                File file = ImageUtils.saveImageToCache(ChatSDK.shared().context(), bitmap, NM.currentUser().getEntityID());
+                        // Cache the file
+                        File file = ImageUtils.compressImageToFile(ChatSDK.shared().context(), bitmap, ChatSDK.currentUserID(), ".png");
 
-                avatarImageView.setImageURI(Uri.fromFile(file));
-                currentUser.setAvatarURL(Uri.fromFile(file).toString());
+                        avatarImageView.setImageURI(Uri.fromFile(file));
+                        currentUser.setAvatarURL(Uri.fromFile(file).toString());
+                    }
+                    catch (Exception e) {
+                        ChatSDK.logError(e);
+                        Toast.makeText(EditProfileActivity.this, e.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                });
             }
-            catch (Exception e) {
-                ChatSDK.logError(e);
-                Toast.makeText(EditProfileActivity.this, e.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-            }
-        }));
+        });
 
         avatarImageView.setImageURI(currentUser.getAvatarURL());
 
-        if (StringUtils.isNotEmpty(countryCode)){
+        if (StringUtils.isNotEmpty(countryCode)) {
             Locale l = new Locale("", countryCode);
             countryButton.setText(l.getDisplayCountry());
         }
 
         countryButton.setOnClickListener(view -> {
 
-            final CountryPicker picker = CountryPicker.newInstance(getString(R.string.select_country));
-            picker.setListener((name1, countryCode1, phoneExtension, i) -> {
-                countryButton.setText(name1);
-                currentUser.setCountryCode(countryCode1);
-                picker.dismiss();
-            });
-            picker.show(getSupportFragmentManager(), "COUNTRY_PICKER");
+            final CountryPicker picker = new CountryPicker.Builder().with(EditProfileActivity.this).listener(country -> {
+                countryButton.setText(country.getName());
+                currentUser.setCountryCode(country.getCode());
+            }).build();
+
+            picker.showDialog(EditProfileActivity.this);
+
         });
 
         logoutButton.setOnClickListener(view -> logout());
 
         statusEditText.setText(status);
 
-        if(!StringUtils.isEmpty(availability)) {
+        if (!StringUtils.isEmpty(availability)) {
             setAvailability(availability);
         }
 
@@ -161,21 +172,19 @@ public class EditProfileActivity extends BaseActivity {
     }
 
     protected void logout () {
-        NM.auth().logout()
+        disposableList.add(ChatSDK.auth().logout()
                 .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(() -> InterfaceManager.shared().a.startLoginActivity(getApplicationContext(), false), throwable -> {
+                .subscribe(() -> ChatSDK.ui().startSplashScreenActivity(getApplicationContext()), throwable -> {
             ChatSDK.logError(throwable);
             Toast.makeText(EditProfileActivity.this, throwable.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-        });
+        }));
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
 
-        MenuItem item =
-                menu.add(Menu.NONE, R.id.action_chat_sdk_save, 12, getString(R.string.action_save));
+        MenuItem item = menu.add(Menu.NONE, R.id.action_chat_sdk_save, 12, getString(R.string.action_save));
         item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
-//        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
         item.setIcon(R.drawable.icn_24_save);
 
         return true;
@@ -187,8 +196,7 @@ public class EditProfileActivity extends BaseActivity {
         /* Cant use switch in the library*/
         int id = item.getItemId();
 
-        if (id == R.id.action_chat_sdk_save)
-        {
+        if (id == R.id.action_chat_sdk_save) {
             saveAndExit();
             return true;
         }
@@ -199,7 +207,7 @@ public class EditProfileActivity extends BaseActivity {
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        try{
+        try {
             mediaSelector.handleResult(this, requestCode, resultCode, data);
         }
         catch (Exception e) {
@@ -210,12 +218,12 @@ public class EditProfileActivity extends BaseActivity {
 
     protected void saveAndExit () {
 
-        String status = statusEditText.getText().toString();
-        String availability = getAvailability();
-        String name = nameEditText.getText().toString();
-        String location = locationEditText.getText().toString();
-        String phoneNumber = phoneNumberEditText.getText().toString();
-        String email = emailEditText.getText().toString();
+        String status = statusEditText.getText().toString().trim();
+        String availability = getAvailability().trim();
+        String name = nameEditText.getText().toString().trim();
+        String location = locationEditText.getText().toString().trim();
+        String phoneNumber = phoneNumberEditText.getText().toString().trim();
+        String email = emailEditText.getText().toString().trim();
 
         currentUser.setStatus(status);
         currentUser.setAvailability(availability);
@@ -225,59 +233,54 @@ public class EditProfileActivity extends BaseActivity {
         currentUser.setEmail(email);
 
         boolean changed = !userMeta.equals(currentUser.metaMap());
-        boolean imageChanged = false;
+//        boolean imageChanged = false;
         boolean presenceChanged = false;
 
-        Map<String, Object> metaMap = new HashMap(currentUser.metaMap());
-
-        Iterator<String> i = metaMap.keySet().iterator();
+        Map<String, Object> metaMap = new HashMap<>(currentUser.metaMap());
 
         // Add a synchronized block to prevent concurrent modification exceptions
-        while (i.hasNext()) {
-            String key = i.next();
-            if(key.equals(Keys.AvatarURL)) {
-                imageChanged = valueChanged(metaMap, userMeta, key);
+        for (String key : metaMap.keySet()) {
+            if (key.equals(Keys.AvatarURL)) {
+//                imageChanged = valueChanged(metaMap, userMeta, key);
                 currentUser.setAvatarHash(null);
             }
-            if(key.equals(Keys.Availability) || key.equals(Keys.Status)) {
+            if (key.equals(Keys.Availability) || key.equals(Keys.Status)) {
                 presenceChanged = presenceChanged || valueChanged(metaMap, userMeta, key);
             }
         }
 
         currentUser.update();
 
-        if(presenceChanged && !changed) {
+        if (presenceChanged && !changed) {
             // Send presence
-            NM.core().goOnline();
+            ChatSDK.core().goOnline();
         }
 
         // TODO: Add this in for Firebase maybe move this to push user...
-//        if(imageChanged && avatarURL != null) {
+//        if (imageChanged && avatarURL != null) {
 //            UserAvatarHelper.saveProfilePicToServer(avatarURL, this).subscribe();
 //        }
 //        else if (changed) {
 
         final Runnable finished = () -> {
             View v = getCurrentFocus();
-            if(v instanceof EditText) {
+            if (v instanceof EditText) {
                 InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
-                imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
             }
 
             finish();
         };
 
 
-        if(changed) {
-
+        if (changed) {
             showOrUpdateProgressDialog(getString(R.string.alert_save_contact));
-
-            NM.core().pushUser()
+            disposableList.add(ChatSDK.core().pushUser()
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribe(() -> {
                         dismissProgressDialog();
                         finished.run();
-                    });
+                    }));
         }
         else {
             finished.run();
@@ -294,12 +297,11 @@ public class EditProfileActivity extends BaseActivity {
         }
     }
 
-    protected int getIndex(Spinner spinner, String myString)
-    {
+    protected int getIndex(Spinner spinner, String myString) {
         int index = 0;
 
-        for (int i=0;i<spinner.getCount();i++){
-            if (spinner.getItemAtPosition(i).toString().equalsIgnoreCase(myString)){
+        for (int i = 0; i<spinner.getCount(); i++) {
+            if (spinner.getItemAtPosition(i).toString().equalsIgnoreCase(myString)) {
                 index = i;
                 break;
             }
@@ -309,29 +311,27 @@ public class EditProfileActivity extends BaseActivity {
 
     protected String getAvailability () {
         String a = availabilitySpinner.getSelectedItem().toString().toLowerCase();
-        if(a.equals("away")) {
-            return Availability.Away;
-        }
-        else if(a.equals("extended away")) {
-            return Availability.XA;
-        }
-        else if(a.equals("busy")) {
-            return Availability.Busy;
-        }
-        else {
-            return Availability.Available;
+        switch (a) {
+            case "away":
+                return Availability.Away;
+            case "extended away":
+                return Availability.XA;
+            case "busy":
+                return Availability.Busy;
+            default:
+                return Availability.Available;
         }
     }
 
     protected void setAvailability (String a) {
         String availability = "available";
-        if(a.equals(Availability.Away)) {
+        if (a.equals(Availability.Away)) {
             availability = "away";
         }
-        else if(a.equals(Availability.XA)) {
+        else if (a.equals(Availability.XA)) {
             availability = "extended away";
         }
-        else if(a.equals(Availability.Busy)) {
+        else if (a.equals(Availability.Busy)) {
             availability = "busy";
         }
         availabilitySpinner.setSelection(getIndex(availabilitySpinner, availability));

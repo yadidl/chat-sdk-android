@@ -19,7 +19,7 @@ import java.util.Map;
 import co.chatsdk.core.defines.Availability;
 import co.chatsdk.core.interfaces.CoreEntity;
 import co.chatsdk.core.interfaces.UserListItem;
-import co.chatsdk.core.session.NM;
+import co.chatsdk.core.session.ChatSDK;
 import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.types.ConnectionType;
 
@@ -34,7 +34,6 @@ public class User implements CoreEntity, UserListItem {
     private String entityID;
     private Integer authenticationType;
     private Date lastOnline;
-    private Date lastUpdated;
 
     @ToMany(referencedJoinProperty = "userId")
     private List<UserMetaValue> metaValues;
@@ -55,13 +54,12 @@ public class User implements CoreEntity, UserListItem {
     private transient UserDao myDao;
 
 
-    @Generated(hash = 1591398925)
-    public User(Long id, String entityID, Integer authenticationType, Date lastOnline, Date lastUpdated) {
+    @Generated(hash = 41386694)
+    public User(Long id, String entityID, Integer authenticationType, Date lastOnline) {
         this.id = id;
         this.entityID = entityID;
         this.authenticationType = authenticationType;
         this.lastOnline = lastOnline;
-        this.lastUpdated = lastUpdated;
     }
 
     @Generated(hash = 586692638)
@@ -95,7 +93,7 @@ public class User implements CoreEntity, UserListItem {
 
     public void addContact(User user, ConnectionType type) {
 
-        if (user.equals(this)) {
+        if (user.isMe()) {
             return;
         }
 
@@ -324,6 +322,10 @@ public class User implements CoreEntity, UserListItem {
         return (String) metaMap().get(key);
     }
 
+    public Boolean metaBooleanForKey(String key) {
+        return metaValueForKey(key) != null && metaValueForKey(key).getValue().toLowerCase().equals("true");
+    }
+
     public void setMetaString(String key, String value) {
         setMetaValue(key, value);
         update();
@@ -376,28 +378,13 @@ public class User implements CoreEntity, UserListItem {
         }
 
         return map;
-
-//        if(metaMapCache == null || metaMapCache.keySet().size() == 0) {
-//            if(metaData != null) {
-//                try {
-//                    metaMapCache = JsonHelper.toMap(new JSONObject(metaData));
-//                } catch (JSONException e) {
-//                    ChatSDK.logError(e);
-//                    Timber.e(e.getCause(), "Cant parse metaData json to map. Meta: %s", metaData);
-//                }
-//            }
-//        }
-//        if(metaMapCache == null) {
-//            metaMapCache = new HashMap<>();
-//        }
-//        return metaMapCache;
     }
 
     @Keep
     public void setMetaValue (String key, String value) {
         UserMetaValue metaValue = metaValueForKey(key);
         if (metaValue == null) {
-            metaValue = StorageManager.shared().createEntity(UserMetaValue.class);
+            metaValue = ChatSDK.db().createEntity(UserMetaValue.class);
             metaValue.setUserId(this.getId());
             getMetaValues().add(metaValue);
         }
@@ -422,15 +409,20 @@ public class User implements CoreEntity, UserListItem {
         return data != null;
     }
 
-    public String getPushChannel(){
-        if (entityID == null)
-            return "";
-
-        return USER_PREFIX + (entityID.replace(":","_"));
+    public String getPushChannel() {
+        // Make the push channel safe
+        String channel = entityID;
+        channel = channel.replace(".", "1");
+        channel = channel.replace("%2E", "1");
+        channel = channel.replace("@", "2");
+        channel = channel.replace("%40", "2");
+        channel = channel.replace(":", "3");
+        channel = channel.replace("%3A", "3");
+        return channel;
     }
 
     public boolean isMe(){
-        return getId().longValue() == NM.currentUser().getId().longValue();
+        return getId().longValue() == ChatSDK.currentUser().getId().longValue();
     }
 
     public String toString() {
@@ -474,16 +466,6 @@ public class User implements CoreEntity, UserListItem {
 
     public void setLastOnline(java.util.Date lastOnline) {
         this.lastOnline = lastOnline;
-    }
-
-
-    public java.util.Date getLastUpdated() {
-        return this.lastUpdated;
-    }
-
-
-    public void setLastUpdated(java.util.Date lastUpdated) {
-        this.lastUpdated = lastUpdated;
     }
 
     /**

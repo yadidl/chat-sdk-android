@@ -12,12 +12,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import co.chatsdk.core.base.AbstractAuthenticationHandler;
-import co.chatsdk.core.base.BaseHookHandler;
 import co.chatsdk.core.dao.User;
 import co.chatsdk.core.enums.AuthStatus;
 import co.chatsdk.core.events.NetworkEvent;
+import co.chatsdk.core.hook.HookEvent;
 import co.chatsdk.core.session.ChatSDK;
-import co.chatsdk.core.session.NM;
 import co.chatsdk.core.types.AccountDetails;
 import co.chatsdk.core.types.AuthKeys;
 import co.chatsdk.core.types.ChatError;
@@ -36,7 +35,7 @@ import static co.chatsdk.firebase.FirebaseErrors.getFirebaseError;
 
 public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler {
 
-    public Completable authenticateWithCachedToken() {
+    public Completable authenticate() {
         return Single.create((SingleOnSubscribe<FirebaseUser>) emitter-> {
                     if (isAuthenticating()) {
                         emitter.onError(ChatError.getError(ChatError.Code.AUTH_IN_PROCESS, "Cant execute two auth in parallel"));
@@ -47,6 +46,7 @@ public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler
 
                         if (user != null) {
                             emitter.onSuccess(user);
+
                         } else {
                             emitter.onError(ChatError.getError(ChatError.Code.NO_AUTH_DATA, "No auth bundle found"));
                         }
@@ -123,19 +123,19 @@ public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler
                     userWrapper.once().subscribe(()->{
                         userWrapper.getModel().update();
 
-                        FirebaseEventHandler.shared().currentUserOn(userWrapper.getModel().getEntityID());
+                        ChatSDK.events().impl_currentUserOn(userWrapper.getModel().getEntityID());
 
-                        if (NM.push() != null) {
-                            NM.push().subscribeToPushChannel(userWrapper.pushChannel());
-                        }
+//                        if (ChatSDK.push() != null) {
+//                            ChatSDK.push().subscribeToPushChannel(userWrapper.getModel().getPushChannel());
+//                        }
 
-                        if (NM.hook() != null) {
+                        if (ChatSDK.hook() != null) {
                             HashMap<String, Object> data = new HashMap<>();
-                            data.put(BaseHookHandler.UserAuthFinished_User, userWrapper.getModel());
-                            NM.hook().executeHook(BaseHookHandler.UserAuthFinished, data);
+                            data.put(HookEvent.User, userWrapper.getModel());
+                            ChatSDK.hook().executeHook(HookEvent.DidAuthenticate, data).subscribe(new CrashReportingCompletableObserver());
                         }
 
-                        NM.core().setUserOnline().subscribe(new CrashReportingCompletableObserver());
+                        ChatSDK.core().setUserOnline().subscribe(new CrashReportingCompletableObserver());
 
                         authenticatedThisSession = true;
 
@@ -145,7 +145,7 @@ public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler
                 .subscribeOn(Schedulers.single());
     }
 
-    public Boolean userAuthenticated() {
+    public Boolean isAuthenticated() {
         return FirebaseAuth.getInstance().getCurrentUser() != null;
     }
 
@@ -166,35 +166,38 @@ public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler
                     user.updatePassword(newPassword).addOnCompleteListener(resultHandler);
                 })
                 .subscribeOn(Schedulers.single());
+
     }
 
     public Completable logout() {
         return Completable.create(
-                emitter->{
-                    final User user = NM.currentUser();
+                emitter-> {
+                    final User user = ChatSDK.currentUser();
 
                     // Stop listening to user related alerts. (added message or thread.)
-                    FirebaseEventHandler.shared().userOff(user.getEntityID());
+                    ChatSDK.events().impl_currentUserOff(user.getEntityID());
 
                     // Removing the push channel
-                    if (NM.push() != null) {
-                        NM.push().unsubscribeToPushChannel(user.getPushChannel());
-                    }
+//                    if (ChatSDK.push() != null) {
+//                        ChatSDK.push().unsubscribeToPushChannel(user.getPushChannel());
+//                    }
 
-                    NM.core().setUserOffline().subscribe(()->{
+                    ChatSDK.hook().executeHook(HookEvent.WillLogout, new HashMap<>()).concatWith(ChatSDK.core().setUserOffline()).subscribe(()->{
 
                         FirebaseAuth.getInstance().signOut();
 
-                        NM.events().source().onNext(NetworkEvent.logout());
+                        removeLoginInfo(AuthKeys.CurrentUserID);
 
-                        if (NM.socialLogin() != null) {
-                            NM.socialLogin().logout();
+                        ChatSDK.events().source().onNext(NetworkEvent.logout());
+
+                        if (ChatSDK.socialLogin() != null) {
+                            ChatSDK.socialLogin().logout();
                         }
 
-                        if (NM.hook() != null) {
+                        if (ChatSDK.hook() != null) {
                             HashMap<String, Object> data = new HashMap<>();
-                            data.put(BaseHookHandler.Logout_User, user);
-                            NM.hook().executeHook(BaseHookHandler.Logout, data);
+                            data.put(HookEvent.User, user);
+                            ChatSDK.hook().executeHook(HookEvent.DidLogout, data).subscribe(new CrashReportingCompletableObserver());;
                         }
 
                         authenticatedThisSession = false;
@@ -228,8 +231,8 @@ public class FirebaseAuthenticationHandler extends AbstractAuthenticationHandler
             return ChatSDK.config().anonymousLoginEnabled;
         } else if (type == AccountDetails.Type.Username || type == AccountDetails.Type.Register) {
             return true;
-        } else if (NM.socialLogin() != null) {
-            return NM.socialLogin().accountTypeEnabled(type);
+        } else if (ChatSDK.socialLogin() != null) {
+            return ChatSDK.socialLogin().accountTypeEnabled(type);
         } else {
             return false;
         }

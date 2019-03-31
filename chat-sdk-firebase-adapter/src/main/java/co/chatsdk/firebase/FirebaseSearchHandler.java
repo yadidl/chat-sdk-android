@@ -7,11 +7,10 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashMap;
 
+import co.chatsdk.core.base.AbstractSearchHandler;
 import co.chatsdk.core.dao.Keys;
 import co.chatsdk.core.dao.User;
-import co.chatsdk.core.defines.FirebaseDefines;
-import co.chatsdk.core.handlers.SearchHandler;
-import co.chatsdk.core.session.NM;
+import co.chatsdk.core.session.ChatSDK;
 import co.chatsdk.core.types.ChatError;
 import co.chatsdk.firebase.wrappers.UserWrapper;
 import io.reactivex.Observable;
@@ -23,21 +22,34 @@ import io.reactivex.schedulers.Schedulers;
  * Created by benjaminsmiley-andrews on 24/05/2017.
  */
 
-public class FirebaseSearchHandler implements SearchHandler {
+public class FirebaseSearchHandler extends AbstractSearchHandler {
 
-    public Observable<User> usersForIndex(final String index, final String value) {
+    @Override
+    public Observable<User> usersForIndex(String value, int limit) {
+        return usersForIndexes(value, limit, Keys.Name, Keys.Email, Keys.Phone, Keys.NameLowercase);
+    }
+
+    @Override
+    public Observable<User> usersForIndex(final String finalValue, final int limit, final String index) {
         return Observable.create((ObservableOnSubscribe<User>) e -> {
 
-            if (StringUtils.isBlank(value))
+            if (StringUtils.isBlank(finalValue))
             {
                 e.onError(ChatError.getError(ChatError.Code.NULL, "Value is blank"));
                 return;
             }
 
+            String value = finalValue;
+
+            if (index.equals(Keys.NameLowercase)) {
+                value = value.toLowerCase();
+            }
+
             final Query query = FirebasePaths.usersRef()
                     .orderByChild(Keys.Meta + '/' + index)
                     .startAt(value)
-                    .limitToFirst(FirebaseDefines.NumberOfUserToLoadForIndex);
+                    .limitToFirst(limit);
+            query.keepSynced(true);
 
             query.addListenerForSingleValueEvent(new FirebaseEventListener().onValue((snapshot, hasValue) -> {
                 if (hasValue) {
@@ -51,9 +63,10 @@ public class FirebaseSearchHandler implements SearchHandler {
                                     DataSnapshot meta = userSnapshot.child(Keys.Meta);
                                     if (meta.hasChild(index)) {
                                         String childValue = (String) meta.child(index).getValue();
-                                        if (childValue.toLowerCase().contains(value.toLowerCase())) {
+                                        String name = (String) meta.child(Keys.Name).getValue();
+                                        if (childValue.toLowerCase().indexOf(finalValue.toLowerCase()) == 0 && name != null && !name.isEmpty()) {
                                             final UserWrapper wrapper = new UserWrapper(userSnapshot);
-                                            if (!wrapper.getModel().equals(NM.currentUser()) && !NM.contact().exists(wrapper.getModel())) {
+                                            if (!wrapper.getModel().equals(ChatSDK.currentUser()) && !ChatSDK.contact().exists(wrapper.getModel())) {
                                                 e.onNext(wrapper.getModel());
                                             }
                                         }
@@ -64,6 +77,9 @@ public class FirebaseSearchHandler implements SearchHandler {
                     }
                 }
                 e.onComplete();
+            }).onCancelled(error -> {
+                e.onError(new Throwable(error.getMessage()));
+//                e.onComplete();
             }));
 
             e.setDisposable(new Disposable() {
@@ -77,8 +93,7 @@ public class FirebaseSearchHandler implements SearchHandler {
                     return false;
                 }
             });
-        }).subscribeOn(Schedulers.single());
-    }
+        }).subscribeOn(Schedulers.single());    }
 
     public static String processForQuery(String query){
         return StringUtils.isBlank(query) ? "" : query.replace(" ", "").toLowerCase();

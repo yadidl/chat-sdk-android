@@ -4,13 +4,14 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import co.chatsdk.core.dao.Keys;
 import co.chatsdk.core.dao.User;
-import co.chatsdk.core.session.NM;
+import co.chatsdk.core.session.ChatSDK;
+import co.chatsdk.core.session.InterfaceManager;
 import co.chatsdk.core.session.StorageManager;
+import co.chatsdk.core.utils.DisposableList;
 import co.chatsdk.ui.R;
 import co.chatsdk.ui.main.BaseActivity;
-import co.chatsdk.ui.manager.BaseInterfaceAdapter;
-import co.chatsdk.ui.manager.InterfaceManager;
 import co.chatsdk.ui.utils.ToastHelper;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 
@@ -22,17 +23,20 @@ public class ProfileActivity extends BaseActivity {
 
     protected User user;
     protected boolean startingChat = false;
+    protected MenuItem chatMenuItem;
+
+    private DisposableList disposableList = new DisposableList();
 
     @Override
     protected void onCreate (Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.chat_sdk_profile_activity);
 
-        String userEntityID = getIntent().getStringExtra(BaseInterfaceAdapter.USER_ENTITY_ID);
+        String userEntityID = getIntent().getStringExtra(Keys.USER_ENTITY_ID);
 
-        if(userEntityID != null && !userEntityID.isEmpty()) {
-            user =  StorageManager.shared().fetchUserWithEntityID(userEntityID);
-            if(user != null) {
+        if (userEntityID != null && !userEntityID.isEmpty()) {
+            user =  ChatSDK.db().fetchUserWithEntityID(userEntityID);
+            if (user != null) {
                 ProfileFragment fragment = (ProfileFragment) getSupportFragmentManager().findFragmentById(R.id.profile_fragment);
                 fragment.setUser(user);
                 fragment.updateInterface();
@@ -47,10 +51,9 @@ public class ProfileActivity extends BaseActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
 
-        MenuItem item =
-                menu.add(Menu.NONE, R.id.action_chat_sdk_chat, 1, getString(R.string.action_chat));
-        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
-        item.setIcon(R.drawable.icn_24_chat);
+        chatMenuItem = menu.add(Menu.NONE, R.id.action_chat_sdk_chat, 1, getString(R.string.action_chat));
+        chatMenuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+        chatMenuItem.setIcon(R.drawable.icn_24_chat);
 
         return true;
     }
@@ -71,7 +74,7 @@ public class ProfileActivity extends BaseActivity {
 
     public void startChat () {
 
-        if(startingChat) {
+        if (startingChat) {
             return;
         }
 
@@ -79,17 +82,18 @@ public class ProfileActivity extends BaseActivity {
 
         showProgressDialog(getString(R.string.creating_thread));
 
-        NM.thread().createThread("", user, NM.currentUser())
+
+        disposableList.add(ChatSDK.thread().createThread("", user, ChatSDK.currentUser())
                 .observeOn(AndroidSchedulers.mainThread())
                 .doFinally(() -> {
                     dismissProgressDialog();
                     startingChat = false;
                 })
                 .subscribe(thread -> {
-                    InterfaceManager.shared().a.startChatActivityForID(getApplicationContext(), thread.getEntityID());
+                    ChatSDK.ui().startChatActivityForID(getApplicationContext(), thread.getEntityID());
                 }, throwable -> {
                     ToastHelper.show(getApplicationContext(), throwable.getLocalizedMessage());
-                });
+                }));
 
 
     }
@@ -99,4 +103,11 @@ public class ProfileActivity extends BaseActivity {
         super.onBackPressed();
         this.finish();
     }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        disposableList.dispose();
+    }
+
 }

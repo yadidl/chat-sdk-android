@@ -16,7 +16,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,16 +30,22 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 import co.chatsdk.core.session.ChatSDK;
+import co.chatsdk.core.utils.ActivityResult;
+import co.chatsdk.core.utils.ActivityResultPushSubjectHolder;
+import co.chatsdk.core.utils.PermissionRequestHandler;
 import co.chatsdk.ui.R;
-import co.chatsdk.ui.utils.AppBackgroundMonitor;
 import co.chatsdk.ui.utils.ToastHelper;
 
 public class BaseActivity extends AppCompatActivity {
 
     protected ProgressDialog progressDialog;
+
+    // This is a list of extras that are passed to the login view
+    protected HashMap<String, Object> extras = new HashMap<>();
 
     public BaseActivity() {
     }
@@ -44,6 +53,8 @@ public class BaseActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        updateExtras(getIntent().getExtras());
+
         // Setting the default task description.
         setTaskDescription(getTaskDescriptionBitmap(), getTaskDescriptionLabel(), getTaskDescriptionColor());
     }
@@ -53,11 +64,12 @@ public class BaseActivity extends AppCompatActivity {
         super.onPostCreate(savedInstanceState);
     }
 
+
     /**
      * @return the bitmap that will be used for the screen overview also called the recents apps.
      **/
     protected Bitmap getTaskDescriptionBitmap(){
-        return BitmapFactory.decodeResource(getResources(), R.drawable.ic_launcher);
+        return BitmapFactory.decodeResource(getResources(), ChatSDK.config().logoDrawableResourceID);
     }
 
     protected int getTaskDescriptionColor(){
@@ -81,24 +93,29 @@ public class BaseActivity extends AppCompatActivity {
             setTaskDescription(td);
         }
     }
-    
+
+    protected void updateExtras (Bundle bundle) {
+        if (bundle != null) {
+            for (String s : bundle.keySet()) {
+                extras.put(s, bundle.get(s));
+            }
+        }
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        updateExtras(intent.getExtras());
     }
-
-
 
     @Override
     protected void onResume() {
         super.onResume();
-        AppBackgroundMonitor.shared().stopActivityTransitionTimer();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        AppBackgroundMonitor.shared().startActivityTransitionTimer();
     }
 
     @Override
@@ -215,6 +232,16 @@ public class BaseActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        PermissionRequestHandler.shared().onRequestPermissionsResult(this, requestCode, permissions, grantResults);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        ActivityResultPushSubjectHolder.shared().onNext(new ActivityResult(requestCode, resultCode, data));
+    }
+
 }
-
-

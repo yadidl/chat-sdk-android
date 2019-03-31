@@ -8,12 +8,34 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
-        android:allowBackup="true"
         android:supportsRtl="true">
 
+        <!--<provider-->
+            <!--android:name="android.support.v4.content.FileProvider"-->
+            <!--android:authorities="${applicationId}.provider"-->
+            <!--android:exported="false"-->
+            <!--android:grantUriPermissions="true">-->
+            <!--<meta-data-->
+                <!--android:name="android.support.FILE_PROVIDER_PATHS"-->
+                <!--android:resource="Android/data/com.example.package.name/files/Pictures">-->
+            <!--</meta-data>-->
+        <!--</provider>-->
+
+        <provider
+            android:name=".chat.PhotoProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <activity android:name=".login.LoginActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/SdkTheme">
+        </activity>
+
+        <activity android:name=".login.SplashScreenActivity"
             android:screenOrientation="portrait"
             android:theme="@style/SdkTheme">
         </activity>
@@ -22,8 +44,12 @@
             android:windowSoftInputMode="stateHidden"
             android:theme="@style/ChatSDKSlidingTransactionTheme"/>
 
+        <activity android:name=".threads.ThreadEditDetailsActivity"
+            android:windowSoftInputMode="stateHidden"
+            android:theme="@style/ChatSDKSlidingTransactionTheme"/>
+
         <activity android:name=".chat.ChatActivity"
-            android:parentActivityName=".main.MainActivity"
+            android:parentActivityName=".main.MainAppBarActivity"
             android:launchMode = "singleTop"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:theme="@style/ChatSDKSlidingTransactionTheme">
@@ -47,7 +73,12 @@
             android:windowSoftInputMode="stateHidden"
             android:theme="@style/SdkTheme"/>
 
-        <activity android:name=".main.MainActivity"
+        <activity android:name=".main.MainAppBarActivity"
+            android:launchMode = "singleTask"
+            android:theme="@style/SdkTheme"
+            android:windowSoftInputMode="stateHidden|adjustResize"/>
+
+        <activity android:name=".main.MainDrawActivity"
             android:launchMode = "singleTask"
             android:theme="@style/SdkTheme"
             android:windowSoftInputMode="stateHidden|adjustResize"/>
@@ -57,7 +88,8 @@
             android:theme="@style/ChatSDKSlidingTransactionTheme"/>
 
         <!--Crop image-->
-        <activity android:name="com.soundcloud.android.crop.CropImageActivity" />
+        <activity android:name="com.theartofdev.edmodo.cropper.CropImageActivity"
+            android:theme="@style/Base.Theme.AppCompat" />
 
         <!-- Google Maps Metadata-->
         <meta-data

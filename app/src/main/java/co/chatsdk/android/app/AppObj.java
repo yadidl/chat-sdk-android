@@ -1,15 +1,22 @@
 package co.chatsdk.android.app;
 
 import android.content.Context;
-import android.support.multidex.MultiDex;
-import android.support.multidex.MultiDexApplication;
 
+import com.google.firebase.auth.EmailAuthProvider;
+import com.google.firebase.auth.PhoneAuthProvider;
+
+import androidx.multidex.MultiDex;
+import androidx.multidex.MultiDexApplication;
+
+import co.chatsdk.core.error.ChatSDKException;
 import co.chatsdk.core.session.ChatSDK;
 import co.chatsdk.core.session.Configuration;
-import co.chatsdk.firebase.FirebaseModule;
+import co.chatsdk.firebase.FirebaseNetworkAdapter;
 import co.chatsdk.firebase.file_storage.FirebaseFileStorageModule;
 import co.chatsdk.firebase.push.FirebasePushModule;
-import co.chatsdk.ui.manager.UserInterfaceModule;
+import co.chatsdk.firebase.ui.FirebaseUIModule;
+import co.chatsdk.profile.pictures.ProfilePicturesModule;
+import co.chatsdk.ui.manager.BaseInterfaceAdapter;
 
 /**
  * Created by itzik on 6/8/2014.
@@ -22,22 +29,35 @@ public class AppObj extends MultiDexApplication {
 
         Context context = getApplicationContext();
 
-        Configuration.Builder builder = new Configuration.Builder(context);
-//        builder.firebaseRootPath("firebase_v4_web_new_4");
-        builder.firebaseRootPath("18_07");
-        builder.googleMaps("AIzaSyCwwtZrlY9Rl8paM0R6iDNBEit_iexQ1aE");
-        builder.firebaseCloudMessagingServerKey("AAAA_WvJyeI:APA91bFIDYoxnbFTub61SKCh8-RZrElzdkZpzyV3paGFlRWonMzq33zQmQW3ub5hDXLuRaipwtoHSoDKXkZlN5DRb_EYdrxtaDptmvZKCYBPKI-4RqTK9wVLOJvgc5X3bVWLfpNSJO_tLK2pnmhfpHDw2Zs-5L2yug");
-        builder.publicRoomCreationEnabled(true);
+        try {
 
-        ChatSDK.initialize(builder.build());
+            Configuration.Builder config = new Configuration.Builder(context);
 
-        UserInterfaceModule.activate(context);
+            config.firebaseRootPath("19_03");
+            config.googleMaps("AIzaSyCwwtZrlY9Rl8paM0R6iDNBEit_iexQ1aE");
+            config.publicRoomCreationEnabled(true);
+            config.pushNotificationSound("default");
+            config.pushNotificationsForPublicChatRoomsEnabled(true);
 
-        FirebaseModule.activate();
+            config.twitterLogin("Kqprq5b6bVeEfcMAGoHzUmB3I", "hPd9HCt3PLnifQFrGHJWi6pSZ5jF7kcHKXuoqB8GJpSDAlVcLq");
+            config.googleLogin("1088435112418-e3t77t8jl2ucs8efeqs72o696in8soui.apps.googleusercontent.com");
 
-        FirebaseFileStorageModule.activate();
-        FirebasePushModule.activateForFirebase();
-//        FirebaseUIModule.activate(context, EmailAuthProvider.PROVIDER_ID, PhoneAuthProvider.PROVIDER_ID);
+            // For the demo version of the client exire rooms after 24 hours
+            config.publicChatRoomLifetimeMinutes(60 * 24);
+
+            ChatSDK.initialize(config.build(), new FirebaseNetworkAdapter(), new BaseInterfaceAdapter(context));
+
+            FirebaseFileStorageModule.activate();
+            FirebasePushModule.activate();
+            ProfilePicturesModule.activate();
+
+            // Uncomment this to enable Firebase UI
+            // FirebaseUIModule.activate(EmailAuthProvider.PROVIDER_ID, PhoneAuthProvider.PROVIDER_ID);
+
+        }
+        catch (ChatSDKException e) {
+            e.printStackTrace();
+        }
 
     }
 

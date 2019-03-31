@@ -12,9 +12,9 @@ import co.chatsdk.core.dao.Keys;
 import co.chatsdk.core.dao.Message;
 import co.chatsdk.core.dao.Thread;
 import co.chatsdk.core.dao.User;
-import co.chatsdk.core.defines.FirebaseDefines;
+import co.chatsdk.core.hook.HookEvent;
 import co.chatsdk.core.interfaces.ThreadType;
-import co.chatsdk.core.session.NM;
+import co.chatsdk.core.session.ChatSDK;
 import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.types.MessageSendProgress;
 import co.chatsdk.core.utils.CrashReportingCompletableObserver;
@@ -22,9 +22,12 @@ import co.chatsdk.firebase.wrappers.MessageWrapper;
 import co.chatsdk.firebase.wrappers.ThreadWrapper;
 import io.reactivex.Completable;
 import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
+import io.reactivex.ObservableOnSubscribe;
 import io.reactivex.Single;
 import io.reactivex.SingleOnSubscribe;
 import io.reactivex.SingleSource;
+import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
 
@@ -37,10 +40,10 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
     public static int UserThreadLinkTypeAddUser = 1;
     public static int UserThreadLinkTypeRemoveUser = 2;
 
-    public Single<List<Message>> loadMoreMessagesForThread(final Message fromMessage,final Thread thread) {
+    public Single<List<Message>> loadMoreMessagesForThread(final Message fromMessage, final Thread thread) {
         return super.loadMoreMessagesForThread(fromMessage, thread).flatMap(messages -> {
-            if(messages.isEmpty()) {
-                return new ThreadWrapper(thread).loadMoreMessages(fromMessage, FirebaseDefines.NumberOfMessagesPerBatch);
+            if (messages.isEmpty()) {
+                return new ThreadWrapper(thread).loadMoreMessages(fromMessage, ChatSDK.config().messagesToLoadPerBatch);
             }
             return Single.just(messages);
         });
@@ -62,12 +65,13 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
      * path with the user IDs. And add the thread ID to the user/threads path for
      * private threads. If value is null, the users will be removed from the thread/users
      * path and the thread will be removed from the user/threads path
+     *
      * @param thread
      * @param users
      * @param userThreadLinkType - 1 => Add, 2 => Remove
      * @return
      */
-    private Completable setUserThreadLinkValue(final Thread thread, final List<User> users, final int userThreadLinkType) {
+    protected Completable setUserThreadLinkValue(final Thread thread, final List<User> users, final int userThreadLinkType) {
         return Completable.create(e -> {
 
             DatabaseReference ref = FirebasePaths.firebaseRawRef();
@@ -82,15 +86,14 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
                 String userThreadsPath = userThreadsRef.toString().replace(userThreadsRef.getRoot().toString(), "");
 
                 //
-                if(userThreadLinkType == UserThreadLinkTypeAddUser) {
+                if (userThreadLinkType == UserThreadLinkTypeAddUser) {
                     data.put(threadUsersPath, u.getEntityID().equals(thread.getCreatorEntityId()) ? Keys.Owner : Keys.Member);
-                    data.put(userThreadsPath, NM.currentUser().getEntityID());
+                    data.put(userThreadsPath, ChatSDK.currentUserID());
 
                     if (thread.typeIs(ThreadType.Public)) {
                         threadUsersRef.onDisconnect().removeValue();
                     }
-                }
-                else if (userThreadLinkType == UserThreadLinkTypeRemoveUser) {
+                } else if (userThreadLinkType == UserThreadLinkTypeRemoveUser) {
                     data.put(threadUsersPath, null);
                     data.put(userThreadsPath, null);
                 }
@@ -99,7 +102,7 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
             ref.updateChildren(data, (databaseError, databaseReference) -> {
                 if (databaseError == null) {
                     FirebaseEntity.pushThreadUsersUpdated(thread.getEntityID()).subscribe(new CrashReportingCompletableObserver());
-                    for(User u : users) {
+                    for (User u : users) {
                         FirebaseEntity.pushUserThreadsUpdated(u.getEntityID()).subscribe(new CrashReportingCompletableObserver());
                     }
                     e.onComplete();
@@ -118,27 +121,35 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
         return new ThreadWrapper(thread).push();
     }
 
-    /** Send a message,
-     *  The message need to have a owner thread attached to it or it cant be added.
-     *  If the destination thread is public the system will add the user to the message thread if needed.
-     *  The uploading to the server part can bee seen her {@see FirebaseCoreAdapter#PushMessageWithComplition}.*/
-    public Observable<MessageSendProgress> sendMessage(final Message message){
-        return Observable.create(e -> new MessageWrapper(message).send()
+    public Completable pushThreadMeta(Thread thread) {
+        return new ThreadWrapper(thread).pushMeta();
+    }
+
+    /**
+     * Send a message,
+     * The message need to have a owner thread attached to it or it cant be added.
+     * If the destination thread is public the system will add the user to the message thread if needed.
+     * The uploading to the server part can bee seen her {@see FirebaseCoreAdapter#PushMessageWithComplition}.
+     */
+    public Observable<MessageSendProgress> sendMessage(final Message message) {
+        return Observable.create(e -> {
+            new MessageWrapper(message).send()
                 .subscribeOn(Schedulers.single())
                 .subscribe(() -> {
                     pushForMessage(message);
                     e.onNext(new MessageSendProgress(message));
                     e.onComplete();
-                }, throwable -> e.onError(throwable)));
+                }, throwable -> e.onError(throwable))
+        ;});
     }
 
     /**
      * Create thread for given users.
-     *  When the thread is added to the server the "onMainFinished" will be invoked,
-     *  If an error occurred the error object would not be null.
-     *  For each user that was successfully added the "onItem" method will be called,
-     *  For any item adding failure the "onItemFailed will be called.
-     *   If the main task will fail the error object in the "onMainFinished" method will be called."
+     * When the thread is added to the server the "onMainFinished" will be invoked,
+     * If an error occurred the error object would not be null.
+     * For each user that was successfully added the "onItem" method will be called,
+     * For any item adding failure the "onItemFailed will be called.
+     * If the main task will fail the error object in the "onMainFinished" method will be called."
      **/
     public Single<Thread> createThread(final List<User> users) {
         return createThread(null, users);
@@ -152,32 +163,37 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
         return createThread(name, users, type, null);
     }
 
-     public Single<Thread> createThread(String name, List<User> users, int type, String entityID) {
+    public Single<Thread> createThread(String name, List<User> users, int type, String entityID) {
+        return createThread(name, users, type, entityID, ChatSDK.config().reuseDeleted1to1Threads);
+    }
+
+    public Single<Thread> createThread(String name, List<User> users, int type, String entityID, boolean reuseDeletedThreads) {
         return Single.create((SingleOnSubscribe<Thread>) e -> {
 
             // If the entity ID is set, see if the thread exists and return it if it does
             // TODO: Check this - what if for some reason the user isn't a member of this thread?
             if (entityID != null) {
-                Thread t = StorageManager.shared().fetchThreadWithEntityID(entityID);
+                Thread t = ChatSDK.db().fetchThreadWithEntityID(entityID);
                 if (t != null) {
                     e.onSuccess(t);
                     return;
                 }
             }
 
-            User currentUser = NM.currentUser();
+            User currentUser = ChatSDK.currentUser();
 
-            if(!users.contains(currentUser)) {
+            if (!users.contains(currentUser)) {
                 users.add(currentUser);
             }
 
-            if(users.size() == 2 && (type == -1 || type == ThreadType.Private1to1)) {
+
+            if (users.size() == 2 && (type == -1 || type == ThreadType.Private1to1)) {
 
                 User otherUser = null;
                 Thread jointThread = null;
 
-                for(User user : users) {
-                    if(!user.equals(currentUser)) {
+                for (User user : users) {
+                    if (!user.equals(currentUser)) {
                         otherUser = user;
                         break;
                     }
@@ -185,10 +201,10 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
 
                 // Check to see if a thread already exists with these
                 // two users
-                for(Thread thread : getThreads(ThreadType.Private1to1, true)) {
+                for(Thread thread : getThreads(ThreadType.Private1to1, reuseDeletedThreads, true)) {
                     if(thread.getUsers().size() == 2 &&
-                            thread.getUsers().contains(currentUser) &&
-                            thread.getUsers().contains(otherUser))
+                            thread.containsUser(currentUser) &&
+                            thread.containsUser(otherUser))
                     {
                         jointThread = thread;
                         break;
@@ -211,10 +227,9 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
             thread.setCreationDate(new Date());
             thread.setName(name);
 
-            if(type != -1) {
+            if (type != -1) {
                 thread.setType(type);
-            }
-            else {
+            } else {
                 thread.setType(users.size() == 2 ? ThreadType.Private1to1 : ThreadType.PrivateGroup);
             }
 
@@ -222,16 +237,15 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
             e.onSuccess(thread);
 
         }).flatMap((Function<Thread, SingleSource<? extends Thread>>) thread -> Single.create(e -> {
-            if(thread.getEntityID() == null) {
+            if (thread.getEntityID() == null) {
                 ThreadWrapper wrapper = new ThreadWrapper(thread);
 
                 wrapper.push().concatWith(addUsersToThread(thread, users)).subscribe(() -> e.onSuccess(thread), e::onError);
 
-            }
-            else {
+            } else {
                 e.onSuccess(thread);
             }
-        })).doOnSuccess(thread -> thread.addUser(NM.currentUser())).subscribeOn(Schedulers.single());
+        })).doOnSuccess(thread -> thread.addUsers(users)).subscribeOn(Schedulers.single());
     }
 
     public Completable deleteThread(Thread thread) {
@@ -245,25 +259,22 @@ public class FirebaseThreadHandler extends AbstractThreadHandler {
         }).flatMapCompletable(thread -> new ThreadWrapper(thread).deleteThread()).subscribeOn(Schedulers.single());
     }
 
-    protected void pushForMessage(final Message message){
-        if (NM.push() == null) {
-            return;
-        }
-
-        if (message.getThread().typeIs(ThreadType.Private)) {
-            NM.push().pushToUsers(message.getThread().getUsers(), message);
+    protected void pushForMessage(final Message message) {
+        if (ChatSDK.push() != null && message.getThread().typeIs(ThreadType.Private)) {
+            HashMap<String, Object> data = ChatSDK.push().pushDataForMessage(message);
+            ChatSDK.push().sendPushNotification(data);
         }
     }
 
-    public Completable deleteMessage (Message message) {
+    public Completable deleteMessage(Message message) {
         return new MessageWrapper(message).delete();
     }
 
-    public Completable leaveThread (Thread thread) {
+    public Completable leaveThread(Thread thread) {
         return null;
     }
 
-    public Completable joinThread (Thread thread) {
+    public Completable joinThread(Thread thread) {
         return null;
     }
 

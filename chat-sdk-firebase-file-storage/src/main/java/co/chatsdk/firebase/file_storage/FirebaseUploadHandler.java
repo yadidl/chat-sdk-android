@@ -1,5 +1,8 @@
 package co.chatsdk.firebase.file_storage;
 
+import android.net.Uri;
+
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
@@ -42,15 +45,20 @@ public class FirebaseUploadHandler extends AbstractUploadHandler {
                 double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
                 System.out.print("Progress: " + progress);
 
-                // TODO: With Firebase this appears to be broken
-                //e.onNext(result);
-            }).addOnSuccessListener(taskSnapshot -> {
-                result.name = name;
-                result.mimeType = mimeType;
-                result.url = fileRef.getDownloadUrl().toString();
-                result.progress.set(taskSnapshot.getTotalByteCount(), taskSnapshot.getTotalByteCount());
+                // TODO: With Firebase this appears to be brokenProfileFragment.newInstance
                 e.onNext(result);
-                e.onComplete();
+            }).addOnSuccessListener(taskSnapshot -> {
+                fileRef.getDownloadUrl().addOnSuccessListener(new OnSuccessListener<Uri>() {
+                    @Override
+                    public void onSuccess(Uri uri) {
+                        result.name = name;
+                        result.mimeType = mimeType;
+                        result.url = uri.toString();
+                        result.progress.set(taskSnapshot.getTotalByteCount(), taskSnapshot.getTotalByteCount());
+                        e.onNext(result);
+                        e.onComplete();
+                    }
+                });
             }).addOnFailureListener(error -> e.onError(ChatError.getError(ChatError.Code.FIREBASE_STORAGE_EXCEPTION, error.getMessage())));
 
         }).subscribeOn(Schedulers.single());

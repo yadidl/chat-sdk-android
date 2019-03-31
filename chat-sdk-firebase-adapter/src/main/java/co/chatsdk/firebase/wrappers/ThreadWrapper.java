@@ -19,16 +19,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import co.chatsdk.core.base.BaseHookHandler;
 import co.chatsdk.core.dao.DaoCore;
 import co.chatsdk.core.dao.Keys;
 import co.chatsdk.core.dao.Message;
 import co.chatsdk.core.dao.Thread;
 import co.chatsdk.core.dao.ThreadMetaValue;
 import co.chatsdk.core.dao.User;
+import co.chatsdk.core.hook.HookEvent;
 import co.chatsdk.core.interfaces.ThreadType;
 import co.chatsdk.core.session.ChatSDK;
-import co.chatsdk.core.session.NM;
 import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.types.MessageSendStatus;
 import co.chatsdk.core.utils.CrashReportingCompletableObserver;
@@ -52,7 +51,7 @@ public class ThreadWrapper  {
     }
     
     public ThreadWrapper(String entityId){
-        this(StorageManager.shared().fetchOrCreateEntityWithEntityID(Thread.class, entityId));
+        this(ChatSDK.db().fetchOrCreateEntityWithEntityID(Thread.class, entityId));
     }
 
     public Thread getModel(){
@@ -84,8 +83,8 @@ public class ThreadWrapper  {
 
             FirebaseReferenceManager.shared().addRef(detailsRef, listener);
 
-            if(NM.typingIndicator() != null) {
-                NM.typingIndicator().typingOn(model);
+            if(ChatSDK.typingIndicator() != null) {
+                ChatSDK.typingIndicator().typingOn(model);
             }
         }).subscribeOn(Schedulers.single());
     }
@@ -125,7 +124,7 @@ public class ThreadWrapper  {
 //                @Override
 //                public void onChildAdded(DataSnapshot snapshot, String s) {
 //                    if (snapshot.getValue() != null && snapshot.getKey() != null) {
-//                        Message m = StorageManager.shared().fetchOrCreateEntityWithEntityID(Message.class, snapshot.getKey());
+//                        Message m = ChatSDK.db().fetchOrCreateEntityWithEntityID(Message.class, snapshot.getKey());
 //                        HashMap<String, Object> messageData = new MessageWrapper(m).lastMessageData();
 //                        pushLastMessage(messageData).subscribe(e::onComplete, e::onError);
 //                    }
@@ -188,15 +187,21 @@ public class ThreadWrapper  {
         FirebaseReferenceManager.shared().removeListeners(FirebasePaths.threadDetailsRef(model.getEntityID()));
         FirebaseReferenceManager.shared().removeListeners(FirebasePaths.threadLastMessageRef(model.getEntityID()));
         metaOff();
-        if(NM.typingIndicator() != null) {
-            NM.typingIndicator().typingOff(model);
+        if(ChatSDK.typingIndicator() != null) {
+            ChatSDK.typingIndicator().typingOff(model);
         }
     }
 
     public Observable<Message> messageRemovedOn() {
         return Observable.create(e -> {
-            final DatabaseReference ref = FirebasePaths.threadMessagesRef(model.getEntityID());
-            ChildEventListener removedListener = ref.addChildEventListener(new FirebaseEventListener().onChildRemoved((snapshot, hasValue) -> {
+
+            Query query = FirebasePaths.threadMessagesRef(model.getEntityID());
+
+            query = query.orderByChild(Keys.Date);
+            query = query.limitToLast(ChatSDK.config().messageDeletionListenerLimit);
+
+
+            ChildEventListener removedListener = query.addChildEventListener(new FirebaseEventListener().onChildRemoved((snapshot, hasValue) -> {
                 if(hasValue) {
                     MessageWrapper message = new MessageWrapper(snapshot);
                     this.model.removeMessage(message.getModel());
@@ -204,7 +209,7 @@ public class ThreadWrapper  {
                     e.onNext(message.getModel());
                 }
             }));
-            FirebaseReferenceManager.shared().addRef(ref, removedListener);
+            FirebaseReferenceManager.shared().addRef(query, removedListener);
         });
     }
 
@@ -245,10 +250,10 @@ public class ThreadWrapper  {
                         }
 
                         if(startTimestamp != null) {
-                            query = query.startAt(startTimestamp);
+                            query = query.startAt(startTimestamp, Keys.Date);
                         }
 
-                        query = query.orderByPriority().limitToLast(ChatSDK.config().maxMessagesToLoad);
+                        query = query.orderByChild(Keys.Date).limitToLast(ChatSDK.config().messageHistoryDownloadLimit);
 
                         ChildEventListener listener = query.addChildEventListener(new FirebaseEventListener().onChildAdded((snapshot, s, hasValue) -> {
                             if (hasValue) {
@@ -259,7 +264,7 @@ public class ThreadWrapper  {
                                     Object userIDObject = hashValue.get(Keys.UserFirebaseId);
                                     if (userIDObject instanceof String) {
                                         String userID = (String) userIDObject;
-                                        if (NM.blocking() != null && NM.blocking().isBlocked(userID)) {
+                                        if (ChatSDK.blocking() != null && ChatSDK.blocking().isBlocked(userID)) {
                                             return;
                                         }
                                     }
@@ -271,12 +276,6 @@ public class ThreadWrapper  {
 
                                 boolean newMessage = message.getModel().getMessageStatus() == MessageSendStatus.None;
 
-                                if(NM.hook() != null) {
-                                    HashMap<String, Object> data = new HashMap<>();
-                                    data.put(BaseHookHandler.MessageReceived_Message, message);
-                                    NM.hook().executeHook(BaseHookHandler.MessageReceived, data);
-                                }
-
                                 message.getModel().setMessageStatus(MessageSendStatus.Delivered);
 
                                 model.addMessage(message.getModel());
@@ -286,6 +285,15 @@ public class ThreadWrapper  {
                                 message.getModel().update();
                                 model.update();
 
+                                if(ChatSDK.hook() != null) {
+                                    HashMap<String, Object> data = new HashMap<>();
+                                    data.put(HookEvent.Message, message.getModel());
+                                    data.put(HookEvent.IsNew_Boolean, newMessage);
+                                    ChatSDK.hook().executeHook(HookEvent.MessageReceived, data).subscribe(new CrashReportingCompletableObserver());;
+                                }
+
+                                // If we remove this, then the thread will update twice for each message.
+                                // That can fix a bug if the user's system time is wrong
                                 if (newMessage) {
                                     e.onNext(message.getModel());
                                 }
@@ -337,14 +345,18 @@ public class ThreadWrapper  {
                 meta.put(value.getKey(), value.getValue());
             }
 
-            ref.setValue(meta, ((databaseError, databaseReference) -> {
-                if (databaseError == null) {
-                    e.onComplete();
-                }
-                else {
-                    e.onError(databaseError.toException());
-                }
-            }));
+            if (meta.keySet().size() > 0) {
+                ref.setValue(meta, ((databaseError, databaseReference) -> {
+                    if (databaseError == null) {
+                        e.onComplete();
+                    }
+                    else {
+                        e.onError(databaseError.toException());
+                    }
+                }));
+            } else {
+                e.onComplete();
+            }
 
         }).subscribeOn(Schedulers.single());
     }
@@ -372,7 +384,7 @@ public class ThreadWrapper  {
                     .onChildAdded((snapshot, s, hasValue) -> {
                         final UserWrapper user = new UserWrapper(snapshot);
                         model.addUser(user.getModel());
-                        NM.core().userOn(user.getModel()).subscribe(() -> e.onNext(user.getModel()), e::onError);
+                        ChatSDK.core().userOn(user.getModel()).subscribe(() -> e.onNext(user.getModel()), e::onError);
 
                     }).onChildRemoved((snapshot, hasValue) -> {
                         UserWrapper user = new UserWrapper(snapshot);
@@ -401,7 +413,7 @@ public class ThreadWrapper  {
      **/
     private Single<Long> threadDeletedDate() {
         return Single.create((SingleOnSubscribe<Long>) e -> {
-            User user = NM.currentUser();
+            User user = ChatSDK.currentUser();
 
             DatabaseReference currentThreadUser = FirebasePaths.threadRef(model.getEntityID())
                     .child(FirebasePaths.UsersPath)
@@ -441,7 +453,7 @@ public class ThreadWrapper  {
 
                 model.update();
 
-                final User currentUser = NM.currentUser();
+                final User currentUser = ChatSDK.currentUser();
 
                 DatabaseReference currentThreadUser = FirebasePaths.threadUsersRef(model.getEntityID())
                         .child(currentUser.getEntityID());
@@ -466,7 +478,7 @@ public class ThreadWrapper  {
                 }
                 else {
 
-                    NM.thread().removeUsersFromThread(model, currentUser).subscribe(e::onComplete, e::onError);
+                    ChatSDK.thread().removeUsersFromThread(model, currentUser).subscribe(e::onComplete, e::onError);
                 }
             }
         }).subscribeOn(Schedulers.single());
@@ -478,7 +490,7 @@ public class ThreadWrapper  {
             Date messageDate = fromMessage != null ? fromMessage.getDate().toDate() : new Date();
 
             // First try to load the messages from the database
-            List<Message> list = StorageManager.shared().fetchMessagesForThreadWithID(model.getId(), numberOfMessages + 1, messageDate);
+            List<Message> list = ChatSDK.db().fetchMessagesForThreadWithID(model.getId(), numberOfMessages + 1, messageDate);
 
             if(!list.isEmpty()) {
                 e.onSuccess(list);
@@ -488,8 +500,8 @@ public class ThreadWrapper  {
 
                 DatabaseReference messageRef = FirebasePaths.threadMessagesRef(model.getEntityID());
 
-                Query query = messageRef.orderByPriority()
-                        .endAt(endDate.getTime() - 1)
+                Query query = messageRef.orderByChild(Keys.Date)
+                        .endAt(endDate.getTime() - 1, Keys.Date)
                         .limitToLast(numberOfMessages + 1);
 
                 query.addListenerForSingleValueEvent(new FirebaseEventListener().onValue((snapshot, hasValue) -> {
@@ -658,8 +670,8 @@ public class ThreadWrapper  {
     }
 
     private void updateReadReceipts() {
-        if(NM.readReceipts() != null) {
-            NM.readReceipts().updateReadReceipts(model);
+        if(ChatSDK.readReceipts() != null) {
+            ChatSDK.readReceipts().updateReadReceipts(model);
         }
     }
 

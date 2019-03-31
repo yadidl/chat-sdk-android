@@ -31,7 +31,7 @@ public class BaseLocationMessageHandler implements LocationMessageHandler {
 
             // Add the LatLng data to the message and the image url and thumbnail url
             // TODO: Deprecated
-//            message.setTextString(String.valueOf(location.latitude)
+//            message.setText(String.valueOf(location.latitude)
 //                    + Defines.DIVIDER
 //                    + String.valueOf(location.longitude)
 //                    + Defines.DIVIDER + imageURL
@@ -48,7 +48,7 @@ public class BaseLocationMessageHandler implements LocationMessageHandler {
             e.onNext(new MessageSendProgress(message));
 
             ObservableConnector<MessageSendProgress> connector = new ObservableConnector<>();
-            connector.connect(NM.thread().sendMessage(message), e);
+            connector.connect(ChatSDK.thread().sendMessage(message), e);
 
         }).subscribeOn(Schedulers.single());
     }

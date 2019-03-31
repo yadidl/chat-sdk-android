@@ -12,6 +12,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.Rect;
+import androidx.appcompat.widget.AppCompatImageButton;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -42,7 +43,7 @@ import io.reactivex.disposables.Disposable;
 
 public class TextInputView extends LinearLayout implements View.OnKeyListener, TextView.OnEditorActionListener{
 
-    protected ImageButton btnSend;
+    protected AppCompatImageButton btnSend;
     protected ImageButton btnOptions;
     protected EditText etMessage;
     protected boolean audioModeEnabled = false;
@@ -84,7 +85,7 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
         etMessage = findViewById(R.id.chat_sdk_et_message_to_send);
     }
 
-    private Activity getActivity() {
+    protected Activity getActivity() {
         Context context = getContext();
         while (context instanceof ContextWrapper) {
             if (context instanceof Activity) {
@@ -100,6 +101,7 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
         super.onFinishInflate();
         initViews();
 
+
         if (isInEditMode()) {
             return;
         }
@@ -113,10 +115,9 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
         });
 
         // Handle recording when the record button is held down
-        btnSend.setOnTouchListener((view, motionEvent) -> {
+        btnSend.setOnTouchListener((view, motionEvent) ->  {
             if(recordOnPress) {
-                PermissionRequestHandler.shared().requestRecordAudio(getActivity()).subscribe(() -> {
-                    if (PermissionRequestHandler.shared().recordPermissionGranted()) {
+                Disposable d = PermissionRequestHandler.shared().requestRecordAudio(getActivity()).subscribe(() -> {
                         // Start recording when we press down
                         if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
                             startRecording(view);
@@ -126,9 +127,6 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
                         if (motionEvent.getAction() == MotionEvent.ACTION_UP) {
                             stopRecording(view, motionEvent);
                         }
-                    } else {
-                        ToastHelper.show(getContext(), getContext().getString(R.string.record_permission_not_granted));
-                    }
                 }, throwable -> ToastHelper.show(getContext(), throwable.getLocalizedMessage()));
             }
             return btnSend.onTouchEvent(motionEvent);
@@ -264,11 +262,11 @@ public class TextInputView extends LinearLayout implements View.OnKeyListener, T
 
     public void updateSendButton () {
         if(StringChecker.isNullOrEmpty(getMessageText()) && audioModeEnabled) {
-            btnSend.setBackgroundResource(R.drawable.ic_36_mic);
+            btnSend.setImageResource(R.drawable.ic_36_mic);
             recordOnPress = true;
         }
         else {
-            btnSend.setBackgroundResource(R.drawable.ic_36_send);
+            btnSend.setImageResource(R.drawable.ic_36_send);
             recordOnPress = false;
         }
     }

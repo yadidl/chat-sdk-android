@@ -22,7 +22,7 @@ import co.chatsdk.ui.R;
 import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 
-import static co.chatsdk.ui.utils.ImageBuilder.bitmapForURL;
+import static co.chatsdk.core.utils.ImageBuilder.bitmapForURL;
 
 /**
  * Created by benjaminsmiley-andrews on 12/06/2017.
@@ -60,7 +60,7 @@ public class ThreadImageBuilder {
             }
             else {
                 combineBitmaps(context, urls).subscribe(bitmap -> {
-                    File file = ImageUtils.saveImageToCache(context, bitmap);
+                    File file = ImageUtils.compressImageToFile(context, bitmap, "avatar", ".png");
                     if(file != null) {
                         e.onSuccess(Uri.fromFile(file));
                     }
@@ -87,7 +87,7 @@ public class ThreadImageBuilder {
 
             Single.merge(singles).observeOn(AndroidSchedulers.mainThread())
                     .doOnComplete(() -> {
-                        int size = context.getResources().getDimensionPixelSize(R.dimen.chat_sdk_chat_action_barcircle_image_view_size);
+                        int size = context.getResources().getDimensionPixelSize(R.dimen.action_bar_avatar_max_size);
                         Bitmap bitmap = ImageUtils.getMixImagesBitmap(size, size, bitmaps);
 
                         if(bitmap == null) {

@@ -9,20 +9,15 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
-import co.chatsdk.core.dao.DaoCore;
 import co.chatsdk.core.dao.Message;
 import co.chatsdk.core.dao.Thread;
 import co.chatsdk.core.dao.User;
-import co.chatsdk.core.dao.UserThreadLink;
-import co.chatsdk.core.dao.UserThreadLinkDao;
 import co.chatsdk.core.dao.sorter.ThreadsSorter;
-import co.chatsdk.core.defines.FirebaseDefines;
 import co.chatsdk.core.handlers.CoreHandler;
 import co.chatsdk.core.handlers.ThreadHandler;
 import co.chatsdk.core.interfaces.ThreadType;
 import co.chatsdk.core.rx.ObservableConnector;
 import co.chatsdk.core.session.ChatSDK;
-import co.chatsdk.core.session.NM;
 import co.chatsdk.core.session.StorageManager;
 import co.chatsdk.core.types.MessageSendProgress;
 import co.chatsdk.core.types.MessageSendStatus;
@@ -48,7 +43,7 @@ public abstract class AbstractThreadHandler implements ThreadHandler {
             Date messageDate = fromMessage != null ? fromMessage.getDate().toDate() : null;
 
             // First try to load the messages from the database
-            List<Message> list = StorageManager.shared().fetchMessagesForThreadWithID(thread.getId(), FirebaseDefines.NumberOfMessagesPerBatch + 1, messageDate);
+            List<Message> list = ChatSDK.db().fetchMessagesForThreadWithID(thread.getId(), ChatSDK.config().messagesToLoadPerBatch + 1, messageDate);
             e.onSuccess(list);
         }).subscribeOn(Schedulers.single());
     }
@@ -66,7 +61,7 @@ public abstract class AbstractThreadHandler implements ThreadHandler {
         return Observable.create((ObservableOnSubscribe<MessageSendProgress>) e -> {
 
             final Message message = newMessage(MessageType.Text, thread);
-            message.setTextString(text);
+            message.setText(text);
 
             e.onNext(new MessageSendProgress(message));
 
@@ -77,16 +72,19 @@ public abstract class AbstractThreadHandler implements ThreadHandler {
 
     }
 
-    public static Message newMessage (MessageType type, Thread thread) {
-        Message message = new Message();
-        DaoCore.createEntity(message);
-        message.setSender(NM.currentUser());
+    public static Message newMessage (int type, Thread thread) {
+        Message message = ChatSDK.db().createEntity(Message.class);
+        message.setSender(ChatSDK.currentUser());
         message.setMessageStatus(MessageSendStatus.Sending);
         message.setDate(new DateTime(System.currentTimeMillis()));
         message.setEntityID(UUID.randomUUID().toString());
-        message.setMessageType(type);
+        message.setType(type);
         thread.addMessage(message);
         return message;
+    }
+
+    public static Message newMessage (MessageType type, Thread thread) {
+        return newMessage(type.ordinal(), thread);
     }
 
     /**
@@ -97,6 +95,11 @@ public abstract class AbstractThreadHandler implements ThreadHandler {
         return Observable.create((ObservableOnSubscribe<MessageSendProgress>) e -> {
             message.update();
             message.getThread().update();
+
+            if (ChatSDK.encryption() != null) {
+                ChatSDK.encryption().encrypt(message);
+            }
+
             e.onNext(new MessageSendProgress(message));
             e.onComplete();
         }).concatWith(sendMessage(message))
@@ -153,31 +156,29 @@ public abstract class AbstractThreadHandler implements ThreadHandler {
     public List<Thread> getThreads(int type, boolean allowDeleted, boolean showEmpty){
 
         if(ThreadType.isPublic(type)) {
-            return StorageManager.shared().fetchThreadsWithType(ThreadType.PublicGroup);
+            return ChatSDK.db().fetchThreadsWithType(ThreadType.PublicGroup);
         }
 
         // We may access this method post authentication
-        if(NM.currentUser() == null) {
+        if(ChatSDK.currentUser() == null) {
             return new ArrayList<>();
         }
 
-        List<UserThreadLink> links = DaoCore.fetchEntitiesWithProperty(UserThreadLink.class, UserThreadLinkDao.Properties.UserId, NM.currentUser().getId());
+        List<Thread> threads = ChatSDK.db().fetchThreadsForUserWithID(ChatSDK.currentUser().getId());
 
-        List<Thread> threads = new ArrayList<>();
-
-        // Pull the threads out of the link object . . . if only gDao supported manyToMany . . .
-        for (UserThreadLink link : links) {
-            if(link.getThread().typeIs(type) && (!link.getThread().getDeleted() || allowDeleted)) {
-                if (showEmpty || link.getThread().getMessages().size() > 0) {
-                    threads.add(link.getThread());
+        List<Thread> filteredThreads = new ArrayList<>();
+        for(Thread thread : threads) {
+            if(thread.typeIs(type) && (!thread.getDeleted() || allowDeleted)) {
+                if (showEmpty || thread.getMessages().size() > 0) {
+                    filteredThreads.add(thread);
                 }
             }
         }
 
         // Sort the threads list before returning
-        Collections.sort(threads, new ThreadsSorter());
+        Collections.sort(filteredThreads, new ThreadsSorter());
 
-        return threads;
+        return filteredThreads;
     }
 
     public void sendLocalSystemMessage(String text, Thread thread) {

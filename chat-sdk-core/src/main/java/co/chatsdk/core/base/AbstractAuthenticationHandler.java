@@ -7,13 +7,8 @@ import java.util.Map;
 import co.chatsdk.core.enums.AuthStatus;
 import co.chatsdk.core.handlers.AuthenticationHandler;
 import co.chatsdk.core.session.ChatSDK;
-import co.chatsdk.core.types.AccountDetails;
-import co.chatsdk.core.types.AccountType;
 import co.chatsdk.core.types.AuthKeys;
 import io.reactivex.Completable;
-import io.reactivex.Single;
-import io.reactivex.SingleOnSubscribe;
-import io.reactivex.schedulers.Schedulers;
 
 /**
  * Created by benjaminsmiley-andrews on 03/05/2017.
@@ -42,8 +37,23 @@ public abstract class AbstractAuthenticationHandler implements AuthenticationHan
         authStatus = AuthStatus.IDLE;
     }
 
+    @Deprecated
+    public Boolean userAuthenticated() {
+        return isAuthenticated();
+    }
+
+    @Deprecated
     public Boolean userAuthenticatedThisSession () {
-        return userAuthenticated() && authenticatedThisSession;
+        return isAuthenticatedThisSession();
+    }
+
+    public Boolean isAuthenticatedThisSession () {
+        return isAuthenticated() && authenticatedThisSession;
+    }
+
+    @Deprecated
+    public Completable authenticateWithCachedToken () {
+        return authenticate();
     }
 
     /**
@@ -77,48 +87,10 @@ public abstract class AbstractAuthenticationHandler implements AuthenticationHan
         keyValuesEditor.apply();
     }
 
-    public Completable authenticateWithMap (final Map<String, Object> details) {
-        return Single.create((SingleOnSubscribe<AccountDetails>) e -> {
-
-            AccountDetails accountDetails = new AccountDetails();
-
-            int loginType = (Integer) details.get(AuthKeys.Type);
-
-            String password = (String) details.get(AuthKeys.Password);
-            String email = (String) details.get(AuthKeys.Email);
-            String token = (String) details.get(AuthKeys.Token);
-
-            switch (loginType) {
-                case AccountType.Password:
-                    accountDetails = AccountDetails.username(email, password);
-                    break;
-                case AccountType.Register:
-                    accountDetails = AccountDetails.signUp(email, password);
-                    break;
-                case AccountType.Facebook:
-                    accountDetails = AccountDetails.facebook();
-                    break;
-                case AccountType.Twitter:
-                    accountDetails = AccountDetails.twitter();
-                    break;
-                case AccountType.Google:
-                    accountDetails = AccountDetails.google();
-                    break;
-                case AccountType.Anonymous:
-                    accountDetails = AccountDetails.anonymous();
-                    break;
-                case AccountType.Custom:
-                    accountDetails = AccountDetails.token(token);
-                    break;
-            }
-
-            if(accountDetails != null) {
-                e.onSuccess(accountDetails);
-            }
-            else {
-                e.onError(new Throwable("No valid login method defined"));
-            }
-        }).flatMapCompletable(accountDetails -> authenticate(accountDetails)).subscribeOn(Schedulers.io());
+    public void removeLoginInfo (String key) {
+        SharedPreferences.Editor keyValuesEditor = ChatSDK.shared().getPreferences().edit();
+        keyValuesEditor.remove(key);
+        keyValuesEditor.apply();
     }
 
     /**
